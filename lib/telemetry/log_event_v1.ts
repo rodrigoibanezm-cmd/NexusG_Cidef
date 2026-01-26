@@ -1,7 +1,7 @@
 // PATH: lib/telemetry/log_event_v1.ts
 // LINES: 74
 
-import { rpushJson } from "../upstash/client";
+import { rpushJson } from "../upstash/client.js";
 
 export type DecisionStateFinal =
   | "OK"
