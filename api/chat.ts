@@ -2,9 +2,9 @@
 // LINES: 96
 
 import crypto from "crypto";
-import { intake } from "../lib/intake/intake";
-import { getJson } from "../lib/upstash/client";
-import { runChatPipelineV1 } from "../lib/pipeline/run_chat_pipeline_v1";
+import { intake } from "../lib/intake/intake.js";
+import { getJson } from "../lib/upstash/client,js";
+import { runChatPipelineV1 } from "../lib/pipeline/run_chat_pipeline_v1.js";
 
 function safeParseBody(req: any): any | null {
   const b = req?.body;
