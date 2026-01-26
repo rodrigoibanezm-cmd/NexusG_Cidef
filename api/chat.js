@@ -1,16 +1,41 @@
+// api/chat.js
+// Handler principal — con llamada a intake (sin refactor adicional)
+
+import { intake } from "../lib/intake/intake";
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "POST only" });
+  }
 
   let body = req.body;
   if (typeof body === "string") body = JSON.parse(body);
 
   const user_id = body?.user_id;
   const text = body?.text;
-  if (!user_id || !text) return res.status(400).json({ error: "missing user_id or text" });
+  const trace_id = body?.trace_id ?? crypto.randomUUID();
 
+  if (!user_id || !text) {
+    return res.status(400).json({ error: "missing user_id or text" });
+  }
+
+  // =========================
+  // 👉 INTAKE (AQUÍ)
+  // =========================
+  const intakeResult = intake({
+    trace_id,
+    user_id,
+    message: text
+  });
+
+  // =========================
+  // Upstash setup
+  // =========================
   const UPS_URL = process.env.KV_REST_API_URL;
   const UPS_TOKEN = process.env.KV_REST_API_TOKEN;
-  if (!UPS_URL || !UPS_TOKEN) return res.status(500).json({ error: "missing KV env vars" });
+  if (!UPS_URL || !UPS_TOKEN) {
+    return res.status(500).json({ error: "missing KV env vars" });
+  }
 
   async function getRaw(key) {
     const r = await fetch(`${UPS_URL}/get/${encodeURIComponent(key)}`, {
@@ -23,10 +48,16 @@ export default async function handler(req, res) {
   async function getJson(key) {
     const raw = await getRaw(key);
     if (raw == null) return null;
-    try { return JSON.parse(raw); } catch { return raw; }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
   }
 
-  // Keys reales subidas (seed_report)
+  // =========================
+  // Carga de contexto (tal como está hoy)
+  // =========================
   const KEYS = [
     "cidef:manifest:v1",
     "cidef:keymap:v1",
@@ -70,9 +101,14 @@ export default async function handler(req, res) {
     })
   );
 
+  // =========================
+  // Respuesta
+  // =========================
   return res.status(200).json({
+    trace_id,
     user_id,
     input: text,
+    intake: intakeResult,
     keys_count: KEYS.length,
     keys: KEYS,
     context_by_key
