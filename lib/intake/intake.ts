@@ -1,5 +1,5 @@
 // PATH: lib/intake/intake.ts
-// LINES: ~70
+// LINES: 21
 
 import { IntakeInput, IntakeResult } from "./types/intake_types";
 import { runDetectors } from "./detectors/intake_detectors";
