@@ -1,11 +1,20 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "POST only" });
+    res.status(405).json({ error: "POST only" });
+    return;
   }
 
-  const { user_id, text } = req.body || {};
+  let body = req.body;
+  if (typeof body === "string") {
+    body = JSON.parse(body);
+  }
+
+  const user_id = body?.user_id;
+  const text = body?.text;
+
   if (!user_id || !text) {
-    return res.status(400).json({ error: "missing user_id or text" });
+    res.status(400).json({ error: "missing user_id or text" });
+    return;
   }
 
   const UPS_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -15,24 +24,22 @@ export default async function handler(req, res) {
     const r = await fetch(`${UPS_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${UPS_TOKEN}` }
     });
-    if (!r.ok) throw new Error(`Upstash error ${r.status}`);
     const j = await r.json();
     return j?.result ? JSON.parse(j.result) : null;
   }
 
-  // 1) cargar keymap
   const keymap = await getKey("cidef:keymap:v1");
 
-  // 2) cargar todas las keys
-  const data = {};
-  for (const [alias, key] of Object.entries(keymap)) {
-    data[alias] = await getKey(key);
-  }
+  const context = {};
+  await Promise.all(
+    Object.entries(keymap).map(async ([alias, key]) => {
+      context[alias] = await getKey(key);
+    })
+  );
 
-  // 3) devolver todo al GPT
-  return res.status(200).json({
+  res.status(200).json({
     user_id,
     input: text,
-    context: data
+    context
   });
 }
