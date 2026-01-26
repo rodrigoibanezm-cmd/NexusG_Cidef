@@ -1,7 +1,7 @@
 // PATH: lib/render/render_bullets_v1.ts
 // LINES: 93
 
-import type { DecisionStateFinal } from "../telemetry/log_event_v1";
+import type { DecisionStateFinal } from "../telemetry/log_event_v1.js";
 
 export type JsonOperativo = {
   decision_state_final: DecisionStateFinal;
