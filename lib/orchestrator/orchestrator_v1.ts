@@ -1,7 +1,7 @@
 // PATH: lib/orchestrator/orchestrator_v1.ts
 // LINES: 99
 
-import { mgetJson } from "../upstash/client";
+import { mgetJson } from "../upstash/client.js";
 
 export type DecisionStateFinal =
   | "OK"
