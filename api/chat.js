@@ -26,47 +26,55 @@ export default async function handler(req, res) {
     try { return JSON.parse(raw); } catch { return raw; }
   }
 
-  // 1) Cargar manifest (fuente de verdad de rutas)
-  const manifestKey = "cidef:manifest:v1";
-  const manifest = await getJson(manifestKey);
-  if (!manifest) return res.status(500).json({ error: "manifest not found", manifestKey });
+  // Keys reales subidas (seed_report)
+  const KEYS = [
+    "cidef:manifest:v1",
+    "cidef:keymap:v1",
+    "cidef:router_config:v1",
+    "cidef:event_log:v1",
+    "cidef:user_events:v1",
+    "cidef:user_state:v1",
 
-  // 2) Construir lista de keys reales desde el manifest (sin adivinar)
-  const keys = [];
+    "cidef:mitos:v1:mitos_v1_china",
+    "cidef:mitos:v1:mitos_v1_ev",
+    "cidef:mitos:v1:mitos_v1_ev_china",
 
-  // core
-  if (manifest.core?.manifest) keys.push(manifest.core.manifest);
-  if (manifest.core?.router_config) keys.push(manifest.core.router_config);
-  if (manifest.core?.event_log) keys.push(manifest.core.event_log);
+    "cidef:fichas:v1:ft_v1_t5",
+    "cidef:fichas:v1:ft_v1_t5_evo",
+    "cidef:fichas:v1:ft_v1_t5l",
+    "cidef:fichas:v1:ft_v1_t5_evo_hev",
+    "cidef:fichas:v1:ft_v1_foton_v9",
+    "cidef:fichas:v1:ft_v1_s50_ev",
 
-  // mitos
-  if (manifest.layers?.mitos) {
-    for (const k of Object.values(manifest.layers.mitos)) keys.push(k);
-  }
+    "cidef:comercial:v1:comercial_v1_t5",
+    "cidef:comercial:v1:comercial_v1_t5_evo",
+    "cidef:comercial:v1:comercial_v1_t5l",
+    "cidef:comercial:v1:comercial_v1_t5_evo_hev",
+    "cidef:comercial:v1:comercial_v1_foton_v9",
+    "cidef:comercial:v1:comercial_v1_s50_ev",
+    "cidef:comercial:v1:comercial_v1_refs",
 
-  // capas por modelo (ft/comercial/cliente)
-  for (const layerName of ["ft", "comercial", "cliente"]) {
-    const layer = manifest.layers?.[layerName];
-    if (!layer) continue;
-    for (const k of Object.values(layer)) keys.push(k);
-  }
+    "cidef:clientes:v1:cliente_v1_t5",
+    "cidef:clientes:v1:cliente_v1_t5_evo",
+    "cidef:clientes:v1:cliente_v1_t5l",
+    "cidef:clientes:v1:cliente_v1_t5_evo_hev",
+    "cidef:clientes:v1:cliente_v1_foton_v9",
+    "cidef:clientes:v1:cliente_v1_s50_ev",
+    "cidef:clientes:v1:cliente_v1_refs"
+  ];
 
-  // quitar duplicados
-  const uniqKeys = [...new Set(keys)].filter(Boolean);
-
-  // 3) Traer todo en paralelo
-  const out = {};
+  const context_by_key = {};
   await Promise.all(
-    uniqKeys.map(async (k) => {
-      out[k] = await getJson(k);
+    KEYS.map(async (k) => {
+      context_by_key[k] = await getJson(k);
     })
   );
 
   return res.status(200).json({
     user_id,
     input: text,
-    manifest_key: manifestKey,
-    keys_count: uniqKeys.length,
-    context_by_key: out
+    keys_count: KEYS.length,
+    keys: KEYS,
+    context_by_key
   });
 }
