@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const UPS_URL = process.env.UPSTASH_REDIS_REST_URL;
-  const UPS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const UPS_URL = process.env.KV_REST_API_URL;
+  const UPS_TOKEN = process.env.KV_REST_API_TOKEN;
 
   async function getKey(key) {
     const r = await fetch(`${UPS_URL}/get/${encodeURIComponent(key)}`, {
