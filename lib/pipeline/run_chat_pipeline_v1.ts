@@ -1,11 +1,11 @@
 // PATH: lib/pipeline/run_chat_pipeline_v1.ts
 // LINES: 99
 
-import { orchestratorV1 } from "../orchestrator/orchestrator_v1";
-import { curatorSemanticV1 } from "../curation/semantic/curator_semantic_v1";
-import { renderBulletsV1 } from "../render/render_bullets_v1";
-import { curatorFormV1 } from "../curation/form/curator_form_v1";
-import { logEventV1 } from "../telemetry/log_event_v1";
+import { orchestratorV1 } from "../orchestrator/orchestrator_v1.js";
+import { curatorSemanticV1 } from "../curation/semantic/curator_semantic_v1.js";
+import { renderBulletsV1 } from "../render/render_bullets_v1.js";
+import { curatorFormV1 } from "../curation/form/curator_form_v1.js";
+import { logEventV1 } from "../telemetry/log_event_v1.js";
 
 type IntakeResult = {
   trace_id: string;
