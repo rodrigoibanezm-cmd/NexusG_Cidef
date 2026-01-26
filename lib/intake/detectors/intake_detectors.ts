@@ -1,7 +1,7 @@
 // PATH: lib/intake/detectors/intake_detectors.ts
-// LINES: 99
+// LINES: 104
 
-import { Model, Topic, Intent, Confidence } from "../types/intake_types"
+import { Model, Topic, Intent, Confidence } from "../types/intake_types.js"
 
 /* -------------------------
  * Utilidades
@@ -33,14 +33,13 @@ export function detectModels(text: string): { models: Model[]; primary: Model | 
       const idx = text.indexOf(a)
       if (idx >= 0) {
         hits.push({ model, idx })
-        break // un hit por modelo basta
+        break
       }
     }
   }
 
   if (hits.length === 0) return { models: [], primary: null }
 
-  // dedupe + ordenar por aparición
   const seen = new Set<Model>()
   const ordered = hits
     .sort((x, y) => x.idx - y.idx)
@@ -52,7 +51,6 @@ export function detectModels(text: string): { models: Model[]; primary: Model | 
 }
 
 export function detectTopic(text: string): Topic {
-  // ficha: specs / números / términos técnicos frecuentes
   if (
     /(ficha|especifica|especificacion|motor|hp|kw|nm|autonomia|medida|dimensiones|airbag|adas|consumo|rendimiento)/.test(
       text
@@ -60,14 +58,11 @@ export function detectTopic(text: string): Topic {
   )
     return "ficha"
 
-  // comercial: cómo vender / oferta / precio / financiamiento
   if (/(vender|argumento|decir|discurso|oferta|promocion|precio|valor|financiamiento|credito|leasing)/.test(text))
     return "comercial"
 
-  // cliente: uso / perfil
   if (/(familia|uso|hijos|colegio|ciudad|viaje|perfil|necesito|para mi)/.test(text)) return "cliente"
 
-  // mitos/objeciones
   if (/(mito|verdad|es cierto|dicen que|prejuicio|china|chino|ev|electrico|bateria)/.test(text))
     return "mitos"
 
@@ -75,6 +70,9 @@ export function detectTopic(text: string): Topic {
 }
 
 export function detectIntent(text: string): Intent {
+  // Regla explícita para taxi/Uber
+  if (/(taxi|uber)/.test(text)) return "cliente_taxi_uber"
+
   if (/(seguridad|airbag|adas|freno|isofix)/.test(text)) return "seguridad"
   if (/(espacio|maletero|habitabilidad|3 fila|tercera fila)/.test(text)) return "espacio"
   if (/(consumo|rendimiento|km\/l|kwh|litro)/.test(text)) return "consumo"
@@ -88,7 +86,6 @@ export function detectIntent(text: string): Intent {
 }
 
 export function detectOffScope(text: string): boolean {
-  // Heurística mínima: si no hay señales automotrices/venta, es off-scope.
   return !/(auto|vehiculo|vehículo|motor|marca|modelo|venta|suv|pickup|camioneta|electrico|eléctrico)/.test(text)
 }
 
