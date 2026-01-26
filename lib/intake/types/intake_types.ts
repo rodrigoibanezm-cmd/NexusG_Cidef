@@ -1,5 +1,5 @@
 // PATH: lib/intake/types/intake_types.ts
-// LINES: 59
+// LINES: 56
 
 export type Model =
   | "t5"
@@ -41,8 +41,6 @@ export type IntakeResult = {
   confidence: Confidence
   decision_state: DecisionState
 
-  // NOTA V1: keys aquí son "refs" simbólicas (topic:model).
-  // El orquestador las resuelve a keys reales vía manifest/keymap.
   keys: string[]
   paths: string[]
 
@@ -50,10 +48,8 @@ export type IntakeResult = {
   critical_question: string | null
 }
 
-export type IntakeInput = {
+type IntakeInput = {
   trace_id: string
   user_id: string
   message: string
 }
-
-export type ModelAliases = Record<Model, string[]>
