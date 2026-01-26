@@ -1,27 +1,30 @@
+export const config = {
+  api: { bodyParser: false } // CLAVE
+};
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "POST only" });
-  }
+  if (req.method !== "POST") return res.status(405).end();
 
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ error: "missing key" });
 
-  if (!url || !token) {
-    return res.status(500).json({ error: "KV env vars missing" });
-  }
+  // Leer body crudo
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const body = Buffer.concat(chunks).toString("utf8");
 
-  const key = "cidef:manifest:v1";
-  const value = req.body;
+  const r = await fetch(
+    `${process.env.UPSTASH_REDIS_REST_URL}/set/${encodeURIComponent(key)}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body
+    }
+  );
 
-  const r = await fetch(`${url}/set/${encodeURIComponent(key)}`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(value),
-  });
-
-  const out = await r.json();
-  res.status(200).json({ ok: true, result: out });
+  const txt = await r.text();
+  return res.status(200).send(txt);
 }
