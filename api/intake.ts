@@ -1,4 +1,6 @@
-// api/intake.ts
+// /api/intake.ts
+// Intake / Router — V1
+// Rol: clasificar y rutear. NO contenido. NO Upstash. NO rules.
 
 export type Model =
   | "t5"
@@ -55,21 +57,26 @@ export type IntakeResult = {
   critical_question: string | null
 }
 
-/**
- * Intake / Router
- * - NO consulta Upstash
- * - NO aplica rules
- * - NO genera texto final
- */
-export function intakeRouter(params: {
+type IntakeInput = {
   trace_id: string
   user_id: string
   message: string
-}): IntakeResult {
-  const { trace_id, user_id } = params
+}
 
-  // TODO: implementar clasificación real
-  // Por ahora: placeholder seguro (no responde contenido)
+/**
+ * Intake / Router
+ * Punto único de entrada.
+ */
+export function intake(input: IntakeInput): IntakeResult {
+  const { trace_id, user_id, message } = input
+
+  // -----------------------------
+  // PLACEHOLDER V1 (seguro)
+  // -----------------------------
+  // No intenta clasificar aún.
+  // Bloquea de forma explícita.
+  // Evita alucinación.
+  // -----------------------------
 
   return {
     trace_id,
