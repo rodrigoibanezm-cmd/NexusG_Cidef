@@ -1,5 +1,5 @@
 // /api/intake.ts
-// Intake / Router — V1 FINAL
+// Intake / Router — V1 FINAL (con soporte multi-modelo)
 // Clasifica y rutea. NO contenido. NO Upstash. NO rules.
 
 export type Model =
@@ -9,14 +9,8 @@ export type Model =
   | "t5_evo_hev"
   | "foton_v9"
   | "s50_ev"
-  | null
 
-export type Topic =
-  | "ficha"
-  | "comercial"
-  | "cliente"
-  | "mitos"
-  | null
+export type Topic = "ficha" | "comercial" | "cliente" | "mitos" | null
 
 export type Intent =
   | "seguridad"
@@ -30,26 +24,26 @@ export type Intent =
   | "tecnologia"
   | "otro"
 
-export type DecisionState =
-  | "OK"
-  | "OK_PARCIAL"
-  | "NO_DATA"
-  | "CONFLICT"
-  | "OFF_SCOPE"
-
+export type DecisionState = "OK" | "OK_PARCIAL" | "NO_DATA" | "CONFLICT" | "OFF_SCOPE"
 export type Confidence = "alta" | "media" | "baja"
+export type OperationMode = "single_model" | "multi_model"
 
 export type IntakeResult = {
   trace_id: string
   user_id: string
 
-  model: Model
+  operation_mode: OperationMode
+  models: Model[]
+  primary_model: Model | null
+
   topic: Topic
   intent: Intent
 
   confidence: Confidence
   decision_state: DecisionState
 
+  // NOTA V1: keys aquí son "refs" simbólicas (topic:model).
+  // El orquestador las resuelve a keys reales vía manifest/keymap.
   keys: string[]
   paths: string[]
 
@@ -75,61 +69,88 @@ function normalize(text: string): string {
     .trim()
 }
 
-const MODEL_ALIASES: Record<Exclude<Model, null>, string[]> = {
+const MODEL_ALIASES: Record<Model, string[]> = {
   t5: ["t5"],
   t5_evo: ["t5 evo", "t5-evo", "t5evo"],
   t5l: ["t5l", "t5 l"],
-  t5_evo_hev: ["t5 evo hev", "t5-evo-hev", "t5 hev"],
+  t5_evo_hev: ["t5 evo hev", "t5-evo-hev", "t5 hev", "t5evo hev"],
   foton_v9: ["foton v9", "v9"],
   s50_ev: ["s50 ev", "s50"]
 }
 
-function detectModel(text: string): { model: Model; conflict: boolean } {
-  const hits: Exclude<Model, null>[] = []
-  for (const model in MODEL_ALIASES) {
-    const aliases = MODEL_ALIASES[model as Exclude<Model, null>]
-    if (aliases.some(a => text.includes(a))) {
-      hits.push(model as Exclude<Model, null>)
+function detectModels(text: string): { models: Model[]; primary: Model | null } {
+  const hits: { model: Model; idx: number }[] = []
+
+  for (const model of Object.keys(MODEL_ALIASES) as Model[]) {
+    const aliases = MODEL_ALIASES[model]
+    for (const a of aliases) {
+      const idx = text.indexOf(a)
+      if (idx >= 0) {
+        hits.push({ model, idx })
+        break // un hit por modelo basta
+      }
     }
   }
-  if (hits.length > 1) return { model: null, conflict: true }
-  if (hits.length === 1) return { model: hits[0], conflict: false }
-  return { model: null, conflict: false }
+
+  if (hits.length === 0) return { models: [], primary: null }
+
+  // dedupe + ordenar por aparición
+  const seen = new Set<Model>()
+  const ordered = hits
+    .sort((x, y) => x.idx - y.idx)
+    .map(h => h.model)
+    .filter(m => (seen.has(m) ? false : (seen.add(m), true)))
+
+  const primary = ordered[0] ?? null
+  return { models: ordered, primary }
 }
 
 function detectTopic(text: string): Topic {
-  if (/(ficha|especifica|motor|hp|kw|autonomia|medida|airbag|adas|consumo)/.test(text)) return "ficha"
-  if (/(vender|argumento|decir|precio|valor|oferta|financiamiento)/.test(text)) return "comercial"
-  if (/(familia|uso|hijos|ciudad|viaje|perfil)/.test(text)) return "cliente"
-  if (/(mito|verdad|es cierto|dicen que|china|ev)/.test(text)) return "mitos"
+  // ficha: specs / números / términos técnicos frecuentes
+  if (/(ficha|especifica|especificacion|motor|hp|kw|nm|autonomia|medida|dimensiones|airbag|adas|consumo|rendimiento)/.test(text))
+    return "ficha"
+
+  // comercial: cómo vender / oferta / precio / financiamiento
+  if (/(vender|argumento|decir|discurso|oferta|promocion|precio|valor|financiamiento|credito|leasing)/.test(text))
+    return "comercial"
+
+  // cliente: uso / perfil
+  if (/(familia|uso|hijos|colegio|ciudad|viaje|perfil|necesito|para mi)/.test(text))
+    return "cliente"
+
+  // mitos/objeciones
+  if (/(mito|verdad|es cierto|dicen que|prejuicio|china|chino|ev|electrico|bateria)/.test(text))
+    return "mitos"
+
   return null
 }
 
 function detectIntent(text: string): Intent {
-  if (/(seguridad|airbag|adas|freno)/.test(text)) return "seguridad"
-  if (/(espacio|maletero|habitabilidad)/.test(text)) return "espacio"
-  if (/(consumo|rendimiento|km\/l|kwh)/.test(text)) return "consumo"
+  if (/(seguridad|airbag|adas|freno|isofix)/.test(text)) return "seguridad"
+  if (/(espacio|maletero|habitabilidad|3 fila|tercera fila)/.test(text)) return "espacio"
+  if (/(consumo|rendimiento|km\/l|kwh|litro)/.test(text)) return "consumo"
   if (/(garantia|garantía)/.test(text)) return "garantia"
-  if (/(ev|electrico|eléctrico|bateria|carga)/.test(text)) return "ev"
-  if (/(precio|valor|costo)/.test(text)) return "precio"
-  if (/(financiamiento|credito|leasing)/.test(text)) return "financiamiento"
-  if (/(postventa|servicio|repuestos)/.test(text)) return "postventa"
-  if (/(pantalla|tecnologia|conectividad)/.test(text)) return "tecnologia"
+  if (/(ev|electrico|eléctrico|bateria|batería|carga|cargador)/.test(text)) return "ev"
+  if (/(precio|valor|costo|cuanto sale)/.test(text)) return "precio"
+  if (/(financiamiento|credito|crédito|leasing|cuotas)/.test(text)) return "financiamiento"
+  if (/(postventa|servicio|mantencion|mantención|repuestos|taller)/.test(text)) return "postventa"
+  if (/(pantalla|tecnologia|tecnología|conectividad|carplay|android auto)/.test(text)) return "tecnologia"
   return "otro"
 }
 
 function detectOffScope(text: string): boolean {
-  return !/(auto|vehiculo|vehículo|motor|marca|modelo|venta)/.test(text)
+  // Heurística mínima: si no hay señales automotrices/venta, es off-scope.
+  return !/(auto|vehiculo|vehículo|motor|marca|modelo|venta|suv|pickup|camioneta|electrico|eléctrico)/.test(text)
 }
 
-function confidenceFor(model: Model, topic: Topic): Confidence {
-  if (model && topic) return "alta"
-  if (model || topic) return "media"
+function confidenceFor(models: Model[], topic: Topic): Confidence {
+  if (models.length > 0 && topic) return "alta"
+  if (models.length > 0 || topic) return "media"
   return "baja"
 }
 
 /* -------------------------
- * Diccionario de paths
+ * Diccionario de paths (V1)
  * ------------------------- */
 
 const PATHS_BY_INTENT: Record<Intent, string[]> = {
@@ -153,71 +174,78 @@ export function intake(input: IntakeInput): IntakeResult {
   const { trace_id, user_id } = input
   const text = normalize(input.message)
 
+  // 1) Off-scope
   if (detectOffScope(text)) {
     return {
       trace_id,
       user_id,
-      model: null,
+
+      operation_mode: "single_model",
+      models: [],
+      primary_model: null,
+
       topic: null,
       intent: "otro",
+
       confidence: "baja",
       decision_state: "OFF_SCOPE",
+
       keys: [],
       paths: [],
+
       need_critical: false,
       critical_question: null
     }
   }
 
-  const modelHit = detectModel(text)
-  if (modelHit.conflict) {
-    return {
-      trace_id,
-      user_id,
-      model: null,
-      topic: null,
-      intent: "otro",
-      confidence: "baja",
-      decision_state: "CONFLICT",
-      keys: [],
-      paths: [],
-      need_critical: false,
-      critical_question: null
-    }
-  }
-
-  const model = modelHit.model
+  // 2) Detectores base
+  const { models, primary } = detectModels(text)
   const topic = detectTopic(text)
   const intent = detectIntent(text)
 
-  const confidence = confidenceFor(model, topic)
-  const need_critical = model === null || topic === null
+  const operation_mode: OperationMode = models.length > 1 ? "multi_model" : "single_model"
+  const confidence = confidenceFor(models, topic)
 
-  const decision_state: DecisionState =
-    need_critical ? "NO_DATA" : "OK"
+  // 3) Need critical (solo por falta de modelo(s) o topic)
+  const need_critical = models.length === 0 || topic === null
 
+  // 4) Estado preliminar (intake)
+  // Nota: el orquestador puede cambiar el estado final según datos reales.
+  const decision_state: DecisionState = need_critical ? "NO_DATA" : "OK"
+
+  // 5) Pregunta crítica (una sola, cerrada)
   const critical_question = need_critical
-    ? "¿Qué modelo estás viendo? (T5, T5 EVO, T5L, T5 EVO HEV, Foton V9 o S50 EV)"
+    ? models.length === 0
+      ? "¿Qué modelo estás viendo? (T5, T5 EVO, T5L, T5 EVO HEV, Foton V9 o S50 EV)"
+      : "¿Qué tema quieres? (ficha, comercial, cliente o mitos)"
     : null
 
-  // Resolución de keys/paths (sin fetch)
-  const keys: string[] = []
+  // 6) Paths
   const paths = PATHS_BY_INTENT[intent] ?? []
 
-  if (model && topic) {
-    keys.push(`${topic}:${model}`) // el orquestador lo traduce vía manifest/keymap
+  // 7) Keys (refs simbólicas topic:model; se resuelven a keys reales en orquestador)
+  const keys: string[] = []
+  if (!need_critical && topic) {
+    for (const m of models) keys.push(`${topic}:${m}`)
   }
 
   return {
     trace_id,
     user_id,
-    model,
+
+    operation_mode,
+    models,
+    primary_model: primary,
+
     topic,
     intent,
+
     confidence,
     decision_state,
+
     keys,
     paths,
+
     need_critical,
     critical_question
   }
