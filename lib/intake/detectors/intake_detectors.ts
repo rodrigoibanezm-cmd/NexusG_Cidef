@@ -1,5 +1,5 @@
 // PATH: lib/intake/detectors/intake_detectors.ts
-// LINES: 142
+// LINES: 82
 
 import { Model, Topic, Intent } from "../types/intake_types"
 
