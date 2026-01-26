@@ -1,5 +1,5 @@
 // PATH: lib/intake/intake.ts
-// LINES: 106
+// LINES: 120
 
 // /api/intake.ts
 // Intake / Router — V1 FINAL (con soporte multi-modelo)
@@ -8,7 +8,7 @@
 export type { Model, Topic, Intent, DecisionState, Confidence, OperationMode, IntakeResult } from "./types/intake_types"
 
 import type { DecisionState, OperationMode, IntakeResult } from "./types/intake_types.js"
-import { PATHS_BY_INTENT } from "./rules/intake_rules.js"
+import { PATHS_BY_INTENT, MODEL_BY_INTENT } from "./rules/intake_rules.js"
 import {
   normalize,
   detectModels,
@@ -57,6 +57,31 @@ export function intake(input: IntakeInput): IntakeResult {
   const topic = detectTopic(text)
   const intent = detectIntent(text)
 
+  // 2b) Aplicar regla RAM de asignación de modelo por intención
+  const modeloPorIntencion = MODEL_BY_INTENT[intent]
+  if (modeloPorIntencion) {
+    return {
+      trace_id,
+      user_id,
+
+      operation_mode: "single_model",
+      models: [modeloPorIntencion],
+      primary_model: modeloPorIntencion,
+
+      topic,
+      intent,
+
+      confidence: "alta",
+      decision_state: "OK",
+
+      keys: topic ? [`${topic}:${modeloPorIntencion}`] : [],
+      paths: PATHS_BY_INTENT[intent] ?? [],
+
+      need_critical: false,
+      critical_question: null
+    }
+  }
+
   const operation_mode: OperationMode = models.length > 1 ? "multi_model" : "single_model"
   const confidence = confidenceFor(models, topic)
 
@@ -64,7 +89,6 @@ export function intake(input: IntakeInput): IntakeResult {
   const need_critical = models.length === 0 || topic === null
 
   // 4) Estado preliminar (intake)
-  // Nota: el orquestador puede cambiar el estado final según datos reales.
   const decision_state: DecisionState = need_critical ? "NO_DATA" : "OK"
 
   // 5) Pregunta crítica (una sola, cerrada)
