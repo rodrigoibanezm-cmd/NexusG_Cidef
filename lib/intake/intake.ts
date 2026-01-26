@@ -1,6 +1,7 @@
 // PATH: lib/intake/intake.ts
-// LINES: 109
+// LINES: 106
 
+// /api/intake.ts
 // Intake / Router — V1 FINAL (con soporte multi-modelo)
 // Clasifica y rutea. NO contenido. NO Upstash. NO rules.
 
@@ -22,10 +23,6 @@ type IntakeInput = {
   user_id: string
   message: string
 }
-
-/* -------------------------
- * Intake principal
- * ------------------------- */
 
 export function intake(input: IntakeInput): IntakeResult {
   const { trace_id, user_id } = input
