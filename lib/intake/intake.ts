@@ -7,8 +7,8 @@
 
 export type { Model, Topic, Intent, DecisionState, Confidence, OperationMode, IntakeResult } from "./types/intake_types"
 
-import type { DecisionState, OperationMode, IntakeResult } from "./types/intake_types"
-import { PATHS_BY_INTENT } from "./rules/intake_rules"
+import type { DecisionState, OperationMode, IntakeResult } from "./types/intake_types.js"
+import { PATHS_BY_INTENT } from "./rules/intake_rules.js"
 import {
   normalize,
   detectModels,
@@ -16,7 +16,7 @@ import {
   detectIntent,
   detectOffScope,
   confidenceFor
-} from "./detectors/intake_detectors"
+} from "./detectors/intake_detectors.js"
 
 type IntakeInput = {
   trace_id: string
