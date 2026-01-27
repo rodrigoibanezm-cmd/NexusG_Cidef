@@ -1,5 +1,5 @@
 // PATH: lib/orchestrator/orchestrator_v1.ts
-// LINES: 147
+// LINES: 141
 
 import { mgetJson } from "../upstash/client.js";
 
@@ -13,17 +13,20 @@ export type DecisionStateFinal =
 type IntakeResult = {
   decision_state?: DecisionStateFinal;
   models?: string[];
-  topic?: string | null; // "ficha" | "comercial" | "cliente" | "mitos"
+  topic?: string | null; // ficha | comercial | cliente | mitos
   intent?: string | null;
   operation_mode?: string | null;
 };
 
 type KeymapV1 = {
-  // Se mantiene por compatibilidad, pero NO se usa para construir keys.
-  ficha_tpl?: string;
-  comercial_tpl?: string;
-  cliente_tpl?: string;
-  mitos_tpl_by_topic?: Record<string, string>;
+  version?: string;
+  namespace?: string;
+  layers?: {
+    ficha?: Record<string, string>;
+    comercial?: Record<string, string>;
+    cliente?: Record<string, string>;
+    mitos?: Record<string, string>; // ev | china | ev_china
+  };
 };
 
 type RouterConfigV1 = {
@@ -66,36 +69,17 @@ function pickByPaths(obj: any, paths: string[] | undefined): any {
       }
       src = src[part];
     }
-    if (src !== undefined) out[p] = src;
+    if (src !== undefined) out[p] = src; // strict: guarda solo el path exacto
   }
   return out;
 }
 
-// --- Key builders (fuente de verdad de nombres) ---
-function keyFicha(model: string) {
-  return `cidef:fichas:v1:ft_v1_${model}`;
-}
-function keyComercial(model: string) {
-  return `cidef:comercial:v1:comercial_v1_${model}`;
-}
-function keyCliente(model: string) {
-  return `cidef:clientes:v1:cliente_v1_${model}`;
-}
-
-// mitos: solo 3 literales
-function keyMitos(topic: string | null): string | null {
-  if (topic === "china") return "cidef:mitos:v1:mitos_v1_china";
-  if (topic === "ev") return "cidef:mitos:v1:mitos_v1_ev";
-  if (topic === "ev_china") return "cidef:mitos:v1:mitos_v1_ev_china";
-  return null;
-}
-
 export async function orchestratorV1(args: {
   intake: IntakeResult;
-  keymap: KeymapV1; // compat
+  keymap: KeymapV1;
   router_config: RouterConfigV1;
 }): Promise<JsonOperativoV1> {
-  const { intake, router_config } = args;
+  const { intake, keymap, router_config } = args;
 
   if (intake.decision_state === "OFF_SCOPE") {
     return {
@@ -117,7 +101,7 @@ export async function orchestratorV1(args: {
   const model = (intake.models && intake.models[0]) || null;
   const topic = intake.topic ?? null;
 
-  // Sin modelo => NO_DATA (no error)
+  // Sin modelo => NO_DATA controlado
   if (!model) {
     return {
       decision_state_final: "NO_DATA",
@@ -135,30 +119,58 @@ export async function orchestratorV1(args: {
     };
   }
 
-  // Base keys: máximo 2, según topic (prioridad)
+  const kFicha = keymap.layers?.ficha?.[model] ?? null;
+  const kCom = keymap.layers?.comercial?.[model] ?? null;
+  const kCli = keymap.layers?.cliente?.[model] ?? null;
+
+  // mitos: no depende de modelo
+  const kMitos =
+    (topic && keymap.layers?.mitos?.[topic]) ||
+    (topic === "china" ? keymap.layers?.mitos?.["china"] : null) ||
+    null;
+
+  // Máx 2 keys + 1 mitos (V1), con prioridad según topic
   const baseKeys: string[] = [];
-  if (topic === "ficha") {
-    baseKeys.push(keyFicha(model), keyComercial(model));
+  if (topic === "cliente") {
+    if (kCli) baseKeys.push(kCli);
+    if (kCom) baseKeys.push(kCom);
+    if (baseKeys.length < 2 && kFicha) baseKeys.push(kFicha);
   } else if (topic === "comercial") {
-    baseKeys.push(keyComercial(model), keyFicha(model));
-  } else if (topic === "cliente") {
-    baseKeys.push(keyCliente(model), keyComercial(model));
-  } else if (topic === "mitos") {
-    // mitos no depende de modelo
+    if (kCom) baseKeys.push(kCom);
+    if (kFicha) baseKeys.push(kFicha);
+    if (baseKeys.length < 2 && kCli) baseKeys.push(kCli);
   } else {
-    // si no hay topic, mantenemos estándar: ficha + comercial
-    baseKeys.push(keyFicha(model), keyComercial(model));
+    // ficha o null => ficha + comercial
+    if (kFicha) baseKeys.push(kFicha);
+    if (kCom) baseKeys.push(kCom);
+    if (baseKeys.length < 2 && kCli) baseKeys.push(kCli);
   }
 
-  const kMitos = keyMitos(topic);
   const finalKeys = kMitos ? [...baseKeys.slice(0, 2), kMitos] : baseKeys.slice(0, 2);
+
+  // Si no hay ninguna key para buscar, NO_DATA (controlado)
+  if (finalKeys.length === 0) {
+    return {
+      decision_state_final: "NO_DATA",
+      model,
+      topic,
+      intent: intake.intent ?? null,
+      keys_used: [],
+      paths_used: [],
+      ficha: null,
+      comercial: null,
+      cliente: null,
+      mitos: null,
+      conflict: false,
+      off_scope: false,
+    };
+  }
 
   const values = await mgetJson(finalKeys);
   const [raw0, raw1, rawM] = values;
 
-  // NO_DATA controlado: nunca PIPELINE_ERROR por keys mal construidas o faltantes
-  const hasAny = Boolean(raw0 || raw1 || rawM);
-  if (!hasAny) {
+  // NO_DATA controlado: nunca error interno por ausencia de datos
+  if (!raw0 && !raw1 && !rawM) {
     return {
       decision_state_final: "NO_DATA",
       model,
@@ -175,14 +187,16 @@ export async function orchestratorV1(args: {
     };
   }
 
-  // Asignación por orden de keys usadas
-  // Nota: según topic, raw0/raw1 pueden ser ficha/comercial/cliente.
+  // Map por prefijo de key (robusto al orden)
   const k0 = finalKeys[0] ?? "";
   const k1 = finalKeys[1] ?? "";
 
-  const rawFicha = k0.includes("cidef:fichas:") ? raw0 : k1.includes("cidef:fichas:") ? raw1 : null;
-  const rawCom = k0.includes("cidef:comercial:") ? raw0 : k1.includes("cidef:comercial:") ? raw1 : null;
-  const rawCli = k0.includes("cidef:clientes:") ? raw0 : k1.includes("cidef:clientes:") ? raw1 : null;
+  const rawFicha =
+    k0.includes("cidef:fichas:") ? raw0 : k1.includes("cidef:fichas:") ? raw1 : null;
+  const rawCom =
+    k0.includes("cidef:comercial:") ? raw0 : k1.includes("cidef:comercial:") ? raw1 : null;
+  const rawCli =
+    k0.includes("cidef:clientes:") ? raw0 : k1.includes("cidef:clientes:") ? raw1 : null;
 
   const ficha = pickByPaths(rawFicha, router_config.paths?.ficha);
   const comercial = pickByPaths(rawCom, router_config.paths?.comercial);
