@@ -58,46 +58,6 @@ const router_config = (await getJson("cidef:router_config:v1")) ?? {};
 const keymap = (await getJson("cidef:keymap:v1")) ?? {};
 
 // DEBUG TEMPORAL (pegar AQUÍ)
-if (req.query?.debug === "1") {
-  const kFicha = keymap?.layers?.ficha?.foton_v9 ?? null;
-  const kCom = keymap?.layers?.comercial?.foton_v9 ?? null;
-
-  const ficha_obj = kFicha ? await getJson(kFicha) : null;
-  const com_obj = kCom ? await getJson(kCom) : null;
-
-  return res.status(200).json({
-    trace_id,
-    intake: intakeResult,
-    keymap_ok: Boolean(kFicha),
-    key_ficha_foton_v9: kFicha,
-    ficha_exists: Boolean(ficha_obj),
-    key_comercial_foton_v9: kCom,
-    comercial_exists: Boolean(com_obj),
-    router_ok: Boolean(router_config?.paths),
-  });
-}
-
-if (req.query?.debug === "2") {
-  const op = await orchestratorV1({
-    intake: intakeResult,
-    keymap,
-    router_config,
-  });
-
-  return res.status(200).json({
-    trace_id,
-    intake: intakeResult,
-    op_decision: op.decision_state_final,
-    keys_used: op.keys_used,
-    has_ficha: Boolean(op.ficha),
-    has_comercial: Boolean(op.comercial),
-    has_cliente: Boolean(op.cliente),
-    has_mitos: Boolean(op.mitos),
-  });
-}
-
-
-
 
   
 // HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
