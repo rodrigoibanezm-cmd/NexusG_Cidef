@@ -52,9 +52,11 @@ export function detectModels(text: string): { models: Model[]; primary: Model | 
 
 export function detectTopic(text: string): Topic {
   if (
-    /(ficha|especifica|especificacion|motor|hp|kw|nm|autonomia|medida|dimensiones|airbag|adas|consumo|rendimiento)/.test(
-      text
+  /(ficha|especifica|especificacion|motor|hp|kw|nm|autonomia|medida|dimensiones|airbag|adas|seguridad|consumo|rendimiento)/.test(
+    text
     )
+)
+
   )
     return "ficha"
 
