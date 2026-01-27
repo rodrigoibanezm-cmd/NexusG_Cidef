@@ -86,7 +86,10 @@ export function detectIntent(text: string): Intent {
 }
 
 export function detectOffScope(text: string): boolean {
-  return !/(auto|vehiculo|vehículo|motor|marca|modelo|venta|suv|pickup|camioneta|electrico|eléctrico)/.test(text)
+  // FIX: evitar OFF_SCOPE cuando el mensaje menciona modelos/marca o términos típicos (ej: "Foton V9", "airbags")
+  return !/(auto|vehiculo|vehículo|motor|marca|modelo|venta|suv|pickup|camioneta|electrico|eléctrico|airbag|airbags|t5|t5l|evo|foton|v9|s50)/.test(
+    text
+  )
 }
 
 export function confidenceFor(models: Model[], topic: Topic): Confidence {
