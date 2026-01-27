@@ -1,69 +1,77 @@
-// PATH: lib/render/render_bullets_v1.ts
+// PATH: api/debug_orch.ts
 // LINES: 100
 
-type Curatable = {
-  ficha?: Record<string, any>;
-  comercial?: Record<string, any>;
-  cliente?: Record<string, any>;
-  mitos?: Record<string, any>;
-};
+import { intake } from "../lib/intake/intake.js";
+import { getJson } from "../lib/upstash/client.js";
+import { orchestratorV1 } from "../lib/orchestrator/orchestrator_v1.js";
+import { curatorSemanticV1 } from "../lib/curation/semantic/curator_semantic_v1.js";
+import { renderBulletsV1 } from "../lib/render/render_bullets_v1.js";
+import { curatorFormV1 } from "../lib/curation/form/curator_form_v1.js";
 
-export function safeText(v: unknown): string | null {
-  if (v == null) return null;
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return v.toString();
-  if (typeof v === "boolean") return v ? "Sí" : "No";
-  return null;
-}
+export default async function handler(req: any, res: any) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-// Genera bullets solo de los campos relevantes
-function flattenRelevantData(bucketName: string, data: Record<string, any>, bullets: string[], maxBullets: number) {
-  const keys = Object.keys(data);
-  for (const key of keys) {
-    if (bullets.length >= maxBullets) break;
-    const value = data[key];
+  const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+  const user_id = body?.user_id;
+  const text = body?.text;
+  const trace_id = body?.trace_id ?? "debug";
 
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      bullets.push(`${bucketName}.${key}: ${safeText(value)}`);
-    } else if (typeof value === "object" && value !== null) {
-      // Para arrays, solo tomar los primeros 2 elementos
-      if (Array.isArray(value)) {
-        for (let i = 0; i < Math.min(value.length, 2) && bullets.length < maxBullets; i++) {
-          const item = value[i];
-          if (typeof item === "object" && item !== null) {
-            bullets.push(`${bucketName}.${key}[${i}]: ${JSON.stringify(item)}`);
-          } else {
-            bullets.push(`${bucketName}.${key}[${i}]: ${safeText(item)}`);
-          }
-        }
-      } else {
-        // Objeto plano, solo primer nivel
-        const subKeys = Object.keys(value).slice(0, 2);
-        for (const subKey of subKeys) {
-          if (bullets.length >= maxBullets) break;
-          bullets.push(`${bucketName}.${subKey}: ${safeText(value[subKey])}`);
-        }
-      }
-    }
-  }
-}
+  if (!user_id || !text) return res.status(400).json({ error: "missing user_id or text" });
 
-export function renderBulletsV1(op: Curatable): string[] {
-  const bullets: string[] = [];
-  const maxBullets = 5; // máximo 5 bullets para Form
-  const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
+  const flags: Record<string, any> = {};
 
-  for (const bucket of buckets) {
-    const data = op[bucket];
-    if (!data) continue;
-    flattenRelevantData(bucket, data, bullets, maxBullets);
-    if (bullets.length >= maxBullets) break;
+  // 1️⃣ Intake
+  const intakeResult = intake({ trace_id, user_id, message: text });
+  flags.intake_done = true;
+
+  // 2️⃣ Config y Keymap
+  const router_config = (await getJson("cidef:router_config:v1")) ?? {};
+  const keymap = (await getJson("cidef:keymap:v1")) ?? {};
+  flags.config_loaded = true;
+
+  // 3️⃣ Orquestador
+  const op = await orchestratorV1({ intake: intakeResult, keymap, router_config });
+  flags.orchestrator_done = true;
+  flags.op_decision = op.decision_state_final;
+
+  // 4️⃣ Curator Semantic
+  const sem = curatorSemanticV1(op);
+  flags.semantic_done = true;
+  flags.semantic_state = sem.decision_state_final;
+
+  // 5️⃣ Render Bullets (limitados)
+  let rendered: string[] = [];
+  try {
+    rendered = renderBulletsV1({ ...op, decision_state_final: sem.decision_state_final });
+    flags.render_done = true;
+    flags.render_count = rendered.length;
+  } catch (e) {
+    flags.render_error = true;
+    flags.render_error_msg = String(e);
   }
 
-  // Fallback: si no hay bullets, pero hay data, avisar
-  if (bullets.length === 0 && (op.ficha || op.comercial || op.cliente || op.mitos)) {
-    bullets.push("Hay información disponible, pero no se pudo renderizar en bullets.");
+  // 6️⃣ Curator Form (validación ligera)
+  let form: any = null;
+  try {
+    form = curatorFormV1({ title: "DEBUG_TITLE", bullets: rendered });
+    flags.form_done = form.ok;
+    if (!form.ok) flags.form_blocked_reason = form.blocked_reason;
+  } catch (e) {
+    flags.form_error = true;
+    flags.form_error_msg = String(e);
   }
 
-  return bullets;
+  return res.status(200).json({
+    trace_id,
+    intake: intakeResult,
+    op_decision: op.decision_state_final,
+    keys_used: op.keys_used,
+    has_ficha: Boolean(op.ficha),
+    has_comercial: Boolean(op.comercial),
+    has_cliente: Boolean(op.cliente),
+    has_mitos: Boolean(op.mitos),
+    flags,
+    rendered,
+    form_output: form,
+  });
 }
