@@ -77,7 +77,29 @@ if (req.query?.debug === "1") {
   });
 }
 
+if (req.query?.debug === "2") {
+  const op = await orchestratorV1({
+    intake: intakeResult,
+    keymap,
+    router_config,
+  });
 
+  return res.status(200).json({
+    trace_id,
+    intake: intakeResult,
+    op_decision: op.decision_state_final,
+    keys_used: op.keys_used,
+    has_ficha: Boolean(op.ficha),
+    has_comercial: Boolean(op.comercial),
+    has_cliente: Boolean(op.cliente),
+    has_mitos: Boolean(op.mitos),
+  });
+}
+
+
+
+
+  
 // HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
 try {
   const out = await runChatPipelineV1({
