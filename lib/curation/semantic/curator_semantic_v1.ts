@@ -1,5 +1,5 @@
 // PATH: lib/curation/semantic/curator_semantic_v1.ts
-// LINES: 110
+// LINES: 115
 
 export type DecisionStateFinal =
   | "OK"
@@ -18,17 +18,14 @@ type Curatable = {
   decision_state_final?: DecisionStateFinal; // opcional: orquestador puede setear
   off_scope?: boolean;
 
-  // Señales de orquestador (V1)
   keys_used?: string[];
   paths_used?: string[];
 
-  // Datos recortados
   ficha?: unknown;
   comercial?: unknown;
   cliente?: unknown;
   mitos?: unknown;
 
-  // Conflictos detectados por orquestador
   conflict?: boolean;
 };
 
@@ -70,9 +67,7 @@ export function curatorSemanticV1(op: unknown): CuratorSemanticResult {
     };
   }
 
-  // 2) Regla limpia y escalable:
-  // Si el orquestador ya decidió OK / OK_PARCIAL, la curadora NO lo invalida.
-  // Solo NO_DATA cuando explícitamente venga NO_DATA o cuando no haya data y no haya decisión previa.
+  // 2) Respetar OK / OK_PARCIAL si ya estaba seteado
   if (x.decision_state_final === "OK") {
     return { decision_state_final: "OK", partial: false, blocked_reason: null };
   }
@@ -85,18 +80,19 @@ export function curatorSemanticV1(op: unknown): CuratorSemanticResult {
     return { decision_state_final: "NO_DATA", partial: false, blocked_reason: "NO_DATA" };
   }
 
-  // 3) Fallback (cuando el orquestador no seteó estado)
-  if (!hasAnyData(x)) {
+  // 3) Fallback: contar buckets
+  const buckets = countDataBuckets(x);
+
+  // NUEVO: si hay ficha y/o comercial, siempre OK
+  if ((x.ficha != null || x.comercial != null) && buckets >= 1) {
     return {
-      decision_state_final: "NO_DATA",
+      decision_state_final: "OK",
       partial: false,
-      blocked_reason: "NO_DATA",
+      blocked_reason: null,
     };
   }
 
-  const buckets = countDataBuckets(x);
-
-  // Regla V1: 1 bucket => parcial; 2+ => OK
+  // 1 bucket (solo cliente o mitos) => parcial
   if (buckets === 1) {
     return {
       decision_state_final: "OK_PARCIAL",
@@ -105,9 +101,10 @@ export function curatorSemanticV1(op: unknown): CuratorSemanticResult {
     };
   }
 
+  // Sin datos
   return {
-    decision_state_final: "OK",
+    decision_state_final: "NO_DATA",
     partial: false,
-    blocked_reason: null,
+    blocked_reason: "NO_DATA",
   };
 }
