@@ -1,10 +1,10 @@
 // PATH: api/execute.js
-// LINES: 55
+// LINES: 64
 
 import { kv } from "@vercel/kv";
 
 /**
- * Router canónico de keys (copiado 1:1 de la definición)
+ * Router canónico de keys (copiado 1:1 de la definición real)
  */
 const KEY_ROUTER = {
   ficha: {
@@ -40,7 +40,7 @@ const KEY_ROUTER = {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(200).json({ data: [] });
+    return res.status(405).json({ error: "METHOD_NOT_ALLOWED" });
   }
 
   const { trace_id = null, topic, models = [] } = req.body || {};
@@ -49,13 +49,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "INVALID_INPUT" });
   }
 
+  const targets =
+    topic === "mitos"
+      ? models.length ? models : ["ev", "china", "ev_china"]
+      : models;
+
   const data = [];
 
-  for (const model of models) {
-    const key = KEY_ROUTER[topic][model];
+  for (const target of targets) {
+    const key = KEY_ROUTER[topic][target];
     const payload = key ? (await kv.get(key)) ?? null : null;
 
-    data.push({ modelo: model, payload });
+    data.push({ modelo: target, payload });
   }
 
   res.status(200).json({
