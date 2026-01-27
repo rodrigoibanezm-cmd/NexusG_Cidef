@@ -59,15 +59,24 @@ const keymap = (await getJson("cidef:keymap:v1")) ?? {};
 
 // DEBUG TEMPORAL (pegar AQUÍ)
 if (req.query?.debug === "1") {
+  const kFicha = keymap?.layers?.ficha?.foton_v9 ?? null;
+  const kCom = keymap?.layers?.comercial?.foton_v9 ?? null;
+
+  const ficha_obj = kFicha ? await getJson(kFicha) : null;
+  const com_obj = kCom ? await getJson(kCom) : null;
+
   return res.status(200).json({
     trace_id,
     intake: intakeResult,
-    keymap_ok: Boolean(keymap?.layers?.ficha?.foton_v9),
-    key_ficha_foton_v9: keymap?.layers?.ficha?.foton_v9 ?? null,
-    key_comercial_foton_v9: keymap?.layers?.comercial?.foton_v9 ?? null,
+    keymap_ok: Boolean(kFicha),
+    key_ficha_foton_v9: kFicha,
+    ficha_exists: Boolean(ficha_obj),
+    key_comercial_foton_v9: kCom,
+    comercial_exists: Boolean(com_obj),
     router_ok: Boolean(router_config?.paths),
   });
 }
+
 
 // HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
 try {
