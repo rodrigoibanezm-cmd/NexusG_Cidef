@@ -1,5 +1,5 @@
-// PATH: lib/curator/render_bullets_v1.ts
-// LINES: 65
+// PATH: lib/render/render_bullets_v1.ts
+// LINES: 75
 
 type Curatable = {
   ficha?: any;
@@ -12,7 +12,7 @@ export function safeText(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === "string") return v;
   if (typeof v === "number") return v.toString();
-  if (typeof v === "boolean") return v ? "Sí" : "No"; // FIX: booleans ahora se renderizan
+  if (typeof v === "boolean") return v ? "Sí" : "No"; // boolean fix
   return null;
 }
 
@@ -27,42 +27,29 @@ export function firstTruthy(...args: unknown[]): string | null {
 export function renderBullets(op: Curatable): string[] {
   const bullets: string[] = [];
 
-  // Ficha
-  if (op.ficha) {
-    for (const [key, value] of Object.entries(op.ficha)) {
-      const txt = safeText(value);
-      if (txt) bullets.push(`${key}: ${txt}`);
+  const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
+
+  for (const bucket of buckets) {
+    const data = op[bucket];
+    if (!data) continue;
+
+    try {
+      for (const [key, value] of Object.entries(data)) {
+        const txt = safeText(value);
+        if (txt) bullets.push(`${key}: ${txt}`);
+      }
+    } catch (e) {
+      bullets.push(`Error renderizando ${bucket}`);
     }
   }
 
-  // Comercial
-  if (op.comercial) {
-    for (const [key, value] of Object.entries(op.comercial)) {
-      const txt = safeText(value);
-      if (txt) bullets.push(`${key}: ${txt}`);
-    }
-  }
-
-  // Cliente
-  if (op.cliente) {
-    for (const [key, value] of Object.entries(op.cliente)) {
-      const txt = safeText(value);
-      if (txt) bullets.push(`${key}: ${txt}`);
-    }
-  }
-
-  // Mitos
-  if (op.mitos) {
-    for (const [key, value] of Object.entries(op.mitos)) {
-      const txt = safeText(value);
-      if (txt) bullets.push(`${key}: ${txt}`);
-    }
-  }
-
-  // Fallback: si no hay bullets pero hay data, poner mensaje genérico
+  // Fallback: si no hay bullets pero hay data
   if (bullets.length === 0 && (op.ficha || op.comercial || op.cliente || op.mitos)) {
     bullets.push("Hay información disponible, pero no se pudo renderizar en bullets.");
   }
 
   return bullets;
 }
+
+// Export como renderBulletsV1 para que coincida con import en pipeline
+export { renderBullets as renderBulletsV1 };
