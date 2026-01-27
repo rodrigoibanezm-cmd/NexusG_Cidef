@@ -54,16 +54,29 @@ export default async function handler(req: any, res: any) {
   }
 
   // Carga mínima (V1)
-  const router_config = (await getJson("cidef:router_config:v1")) ?? {};
-  const keymap = (await getJson("cidef:keymap:v1")) ?? {};
+const router_config = (await getJson("cidef:router_config:v1")) ?? {};
+const keymap = (await getJson("cidef:keymap:v1")) ?? {};
 
-  // HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
-  try {
-    const out = await runChatPipelineV1({
-      intake: intakeResult,
-      keymap,
-      router_config,
-    });
+// DEBUG TEMPORAL (pegar AQUÍ)
+if (req.query?.debug === "1") {
+  return res.status(200).json({
+    trace_id,
+    intake: intakeResult,
+    keymap_ok: Boolean(keymap?.layers?.ficha?.foton_v9),
+    key_ficha_foton_v9: keymap?.layers?.ficha?.foton_v9 ?? null,
+    key_comercial_foton_v9: keymap?.layers?.comercial?.foton_v9 ?? null,
+    router_ok: Boolean(router_config?.paths),
+  });
+}
+
+// HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
+try {
+  const out = await runChatPipelineV1({
+    intake: intakeResult,
+    keymap,
+    router_config,
+  });
+
 
     return res.status(200).json(out);
   } catch (e: any) {
