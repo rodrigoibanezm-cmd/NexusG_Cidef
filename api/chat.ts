@@ -1,5 +1,5 @@
 // PATH: api/chat.ts
-// LINES: 141
+// LINES: 150
 
 import { intake } from "../lib/intake/intake.js";
 import { getJson } from "../lib/upstash/client.js";
@@ -37,8 +37,10 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "missing user_id or text" });
   }
 
+  // Intake
   const intakeResult = intake({ trace_id, user_id, message: text });
 
+  // Manejo de preguntas críticas
   if (intakeResult?.need_critical === true) {
     const q = intakeResult?.critical_question;
     if (typeof q === "string" && q.trim().length) {
@@ -49,29 +51,36 @@ export default async function handler(req: any, res: any) {
       .json({ trace_id, critical_question: "¿Cuál es tu pregunta exacta?" });
   }
 
+  // Fuera de alcance
   if (intakeResult?.decision_state === "OFF_SCOPE") {
     return res.status(200).json({ trace_id, blocked: true, reason: "OFF_SCOPE" });
   }
 
-  // Carga mínima (V1)
-const router_config = (await getJson("cidef:router_config:v1")) ?? {};
-const keymap = (await getJson("cidef:keymap:v1")) ?? {};
+  // Carga mínima
+  const router_config = (await getJson("cidef:router_config:v1")) ?? {};
+  const keymap = (await getJson("cidef:keymap:v1")) ?? {};
 
-// DEBUG TEMPORAL (pegar AQUÍ)
+  // Pipeline principal
+  try {
+    const out = await runChatPipelineV1({
+      intake: intakeResult,
+      keymap,
+      router_config,
+    });
 
-  
-// HARD GUARDRAIL: si iba a RAM y falla el action/pipeline, NO hay fallback.
-try {
-  const out = await runChatPipelineV1({
-    intake: intakeResult,
-    keymap,
-    router_config,
-  });
-
+    // Validación final: si no hay output válido, no marcar NO_DATA automáticamente
+    if (!out || Object.keys(out).length === 0) {
+      return res.status(200).json({
+        trace_id,
+        blocked: false,
+        reason: "EMPTY_OUTPUT",
+        message: "El pipeline no produjo contenido, pero datos existen.",
+      });
+    }
 
     return res.status(200).json(out);
   } catch (e: any) {
-    // FIX 1: Log real para ver el detalle en Vercel (en vez de “silencio”)
+    // Log detallado
     console.error("CHAT_PIPELINE_ERROR", {
       trace_id,
       user_id,
@@ -83,6 +92,7 @@ try {
     const route = (intakeResult as any)?.route;
     const needs_facts = (intakeResult as any)?.needs_facts === true;
 
+    // Solo RAM realmente fallida
     if (route === "RAM" || needs_facts) {
       return res.status(200).json({
         trace_id,
@@ -91,8 +101,21 @@ try {
       });
     }
 
-    // FIX 2: Si no es RAM, tratamos el fallo como NO_DATA (falta de fuente/keys/etc)
-    // Esto evita PIPELINE_ERROR cuando la realidad es “no hay datos”.
+    // Fallback seguro: no asumir NO_DATA si Intake detectó ficha/comercial
+    const has_data =
+      intakeResult?.has_ficha === true || intakeResult?.has_comercial === true;
+
+    if (has_data) {
+      return res.status(200).json({
+        trace_id,
+        blocked: false,
+        reason: "PARTIAL_DATA",
+        message:
+          "Hubo un error interno, pero hay datos disponibles. Intenta de nuevo.",
+      });
+    }
+
+    // Real NO_DATA
     return res.status(200).json({
       trace_id,
       blocked: true,
