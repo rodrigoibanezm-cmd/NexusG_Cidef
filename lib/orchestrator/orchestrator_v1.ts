@@ -1,5 +1,5 @@
 // PATH: lib/orchestrator/orchestrator_v1.ts
-// LINES: 99
+// LINES: 120
 
 import { mgetJson } from "../upstash/client.js";
 
@@ -120,9 +120,27 @@ export async function orchestratorV1(args: {
     null;
 
   const finalKeys = kMitos ? [...baseKeys, kMitos] : baseKeys;
-  const values = await mgetJson(finalKeys);
 
+  const values = await mgetJson(finalKeys);
   const [raw0, raw1, rawM] = values;
+
+  // FIX: si no hay datos (keys mal armadas / Upstash vacío), no romper el pipeline
+  if (!raw0 && !raw1 && !rawM) {
+    return {
+      decision_state_final: "NO_DATA",
+      model,
+      topic,
+      intent: intake.intent ?? null,
+      keys_used: finalKeys,
+      paths_used: [],
+      ficha: null,
+      comercial: null,
+      cliente: null,
+      mitos: null,
+      conflict: false,
+      off_scope: false,
+    };
+  }
 
   const ficha = pickByPaths(raw0, router_config.paths?.ficha);
   const comercial = pickByPaths(raw1, router_config.paths?.comercial);
@@ -134,8 +152,12 @@ export async function orchestratorV1(args: {
     ...(router_config.paths?.mitos ?? []),
   ];
 
+  // FIX: si no vino ficha (pero sí otras cosas), degradar a NO_DATA en vez de OK
+  const decision_state_final: DecisionStateFinal =
+    ficha == null && comercial == null && mitos == null ? "NO_DATA" : "OK";
+
   return {
-    decision_state_final: "OK", // el curador semántico lo ajusta (OK/OK_PARCIAL/NO_DATA)
+    decision_state_final, // el curador semántico lo ajusta (OK/OK_PARCIAL/NO_DATA)
     model,
     topic,
     intent: intake.intent ?? null,
