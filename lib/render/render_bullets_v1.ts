@@ -1,5 +1,5 @@
 // PATH: lib/render/render_bullets_v1.ts
-// LINES: 90
+// LINES: 95
 
 type Curatable = {
   ficha?: any;
@@ -24,6 +24,18 @@ export function firstTruthy(...args: unknown[]): string | null {
   return null;
 }
 
+// Nuevo helper recursivo para cualquier objeto o array
+function flattenData(prefix: string, data: any, bullets: string[]) {
+  if (data == null) return;
+  if (typeof data === "string" || typeof data === "number" || typeof data === "boolean") {
+    bullets.push(`${prefix}: ${safeText(data)}`);
+  } else if (Array.isArray(data)) {
+    data.forEach((item, idx) => flattenData(`${prefix}[${idx}]`, item, bullets));
+  } else if (typeof data === "object") {
+    Object.entries(data).forEach(([k, v]) => flattenData(`${prefix}.${k}`, v, bullets));
+  }
+}
+
 export function renderBullets(op: Curatable): string[] {
   const bullets: string[] = [];
   const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
@@ -33,18 +45,7 @@ export function renderBullets(op: Curatable): string[] {
     if (!data) continue;
 
     try {
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === "object" && value !== null) {
-          // Flatten 2 niveles
-          for (const [subKey, subValue] of Object.entries(value)) {
-            const txt = safeText(subValue);
-            if (txt) bullets.push(`${key}.${subKey}: ${txt}`);
-          }
-        } else {
-          const txt = safeText(value);
-          if (txt) bullets.push(`${key}: ${txt}`);
-        }
-      }
+      flattenData(bucket, data, bullets);
     } catch (e) {
       bullets.push(`Error renderizando ${bucket}`);
     }
