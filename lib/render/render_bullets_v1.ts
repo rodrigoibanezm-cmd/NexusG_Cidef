@@ -1,5 +1,5 @@
 // PATH: lib/render/render_bullets_v1.ts
-// LINES: 75
+// LINES: 90
 
 type Curatable = {
   ficha?: any;
@@ -12,7 +12,7 @@ export function safeText(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === "string") return v;
   if (typeof v === "number") return v.toString();
-  if (typeof v === "boolean") return v ? "Sí" : "No"; // boolean fix
+  if (typeof v === "boolean") return v ? "Sí" : "No";
   return null;
 }
 
@@ -26,7 +26,6 @@ export function firstTruthy(...args: unknown[]): string | null {
 
 export function renderBullets(op: Curatable): string[] {
   const bullets: string[] = [];
-
   const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
 
   for (const bucket of buckets) {
@@ -35,8 +34,16 @@ export function renderBullets(op: Curatable): string[] {
 
     try {
       for (const [key, value] of Object.entries(data)) {
-        const txt = safeText(value);
-        if (txt) bullets.push(`${key}: ${txt}`);
+        if (typeof value === "object" && value !== null) {
+          // Flatten 2 niveles
+          for (const [subKey, subValue] of Object.entries(value)) {
+            const txt = safeText(subValue);
+            if (txt) bullets.push(`${key}.${subKey}: ${txt}`);
+          }
+        } else {
+          const txt = safeText(value);
+          if (txt) bullets.push(`${key}: ${txt}`);
+        }
       }
     } catch (e) {
       bullets.push(`Error renderizando ${bucket}`);
@@ -51,5 +58,5 @@ export function renderBullets(op: Curatable): string[] {
   return bullets;
 }
 
-// Export como renderBulletsV1 para que coincida con import en pipeline
+// Export como renderBulletsV1 para coincidir con import en pipeline
 export { renderBullets as renderBulletsV1 };
