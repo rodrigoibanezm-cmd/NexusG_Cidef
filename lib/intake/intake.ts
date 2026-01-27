@@ -1,5 +1,5 @@
 // PATH: lib/intake/intake.ts
-// LINES: 120
+// LINES: 125
 
 // /api/intake.ts
 // Intake / Router — V1 FINAL (con soporte multi-modelo)
@@ -9,14 +9,7 @@ export type { Model, Topic, Intent, DecisionState, Confidence, OperationMode, In
 
 import type { DecisionState, OperationMode, IntakeResult } from "./types/intake_types.js"
 import { PATHS_BY_INTENT, MODEL_BY_INTENT } from "./rules/intake_rules.js"
-import {
-  normalize,
-  detectModels,
-  detectTopic,
-  detectIntent,
-  detectOffScope,
-  confidenceFor
-} from "./detectors/intake_detectors.js"
+import { normalize, detectModels, detectTopic, detectIntent, detectOffScope, confidenceFor } from "./detectors/intake_detectors.js"
 
 type IntakeInput = {
   trace_id: string
@@ -28,8 +21,13 @@ export function intake(input: IntakeInput): IntakeResult {
   const { trace_id, user_id } = input
   const text = normalize(input.message)
 
-  // 1) Off-scope
-  if (detectOffScope(text)) {
+  // 1) Detectores base (ANTES de Off-scope)
+  const { models, primary } = detectModels(text)
+  const topic = detectTopic(text)
+  const intent = detectIntent(text)
+
+  // 2) Off-scope (solo si NO hay señales internas)
+  if (detectOffScope(text) && models.length === 0 && topic === null && intent === "otro") {
     return {
       trace_id,
       user_id,
@@ -52,12 +50,7 @@ export function intake(input: IntakeInput): IntakeResult {
     }
   }
 
-  // 2) Detectores base
-  const { models, primary } = detectModels(text)
-  const topic = detectTopic(text)
-  const intent = detectIntent(text)
-
-  // 2b) Aplicar regla RAM de asignación de modelo por intención
+  // 3) Aplicar regla RAM de asignación de modelo por intención
   const modeloPorIntencion = MODEL_BY_INTENT[intent]
   if (modeloPorIntencion) {
     return {
@@ -85,23 +78,23 @@ export function intake(input: IntakeInput): IntakeResult {
   const operation_mode: OperationMode = models.length > 1 ? "multi_model" : "single_model"
   const confidence = confidenceFor(models, topic)
 
-  // 3) Need critical (solo por falta de modelo(s) o topic)
+  // 4) Need critical (solo por falta de modelo(s) o topic)
   const need_critical = models.length === 0 || topic === null
 
-  // 4) Estado preliminar (intake)
+  // 5) Estado preliminar (intake)
   const decision_state: DecisionState = need_critical ? "NO_DATA" : "OK"
 
-  // 5) Pregunta crítica (una sola, cerrada)
+  // 6) Pregunta crítica (una sola, cerrada)
   const critical_question = need_critical
     ? models.length === 0
       ? "¿Qué modelo estás viendo? (T5, T5 EVO, T5L, T5 EVO HEV, Foton V9 o S50 EV)"
       : "¿Qué tema quieres? (ficha, comercial, cliente o mitos)"
     : null
 
-  // 6) Paths
+  // 7) Paths
   const paths = PATHS_BY_INTENT[intent] ?? []
 
-  // 7) Keys (refs simbólicas topic:model; se resuelven a keys reales en orquestador)
+  // 8) Keys (refs simbólicas topic:model; se resuelven a keys reales en orquestador)
   const keys: string[] = []
   if (!need_critical && topic) {
     for (const m of models) keys.push(`${topic}:${m}`)
