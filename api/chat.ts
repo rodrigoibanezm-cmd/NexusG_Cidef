@@ -1,5 +1,5 @@
 // PATH: api/chat.ts
-// LINES: 126
+// LINES: 141
 
 import { intake } from "../lib/intake/intake.js";
 import { getJson } from "../lib/upstash/client.js";
@@ -67,6 +67,15 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json(out);
   } catch (e: any) {
+    // FIX 1: Log real para ver el detalle en Vercel (en vez de “silencio”)
+    console.error("CHAT_PIPELINE_ERROR", {
+      trace_id,
+      user_id,
+      text,
+      intake: intakeResult,
+      err: e?.stack || String(e),
+    });
+
     const route = (intakeResult as any)?.route;
     const needs_facts = (intakeResult as any)?.needs_facts === true;
 
@@ -78,10 +87,13 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // FIX 2: Si no es RAM, tratamos el fallo como NO_DATA (falta de fuente/keys/etc)
+    // Esto evita PIPELINE_ERROR cuando la realidad es “no hay datos”.
     return res.status(200).json({
       trace_id,
-      error: "PIPELINE_ERROR",
-      message: "Error interno. Reintenta.",
+      blocked: true,
+      reason: "NO_DATA",
+      message: "No hay información disponible en el sistema para esa pregunta.",
     });
   }
 }
