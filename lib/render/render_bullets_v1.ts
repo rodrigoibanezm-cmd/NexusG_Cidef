@@ -1,11 +1,12 @@
 // PATH: lib/render/render_bullets_v1.ts
-// LINES: 95
+// LINES: 110
 
 type Curatable = {
-  ficha?: any;
-  comercial?: any;
-  cliente?: any;
-  mitos?: any;
+  ficha?: Record<string, any>;
+  comercial?: Record<string, any>;
+  cliente?: Record<string, any>;
+  mitos?: Record<string, any>;
+  topic?: string;   // nuevo campo para filtrar según intención
 };
 
 export function safeText(v: unknown): string | null {
@@ -16,48 +17,60 @@ export function safeText(v: unknown): string | null {
   return null;
 }
 
-export function firstTruthy(...args: unknown[]): string | null {
-  for (const v of args) {
-    const txt = safeText(v);
-    if (txt) return txt;
+// Genera bullets solo de campos relevantes para la intención
+function flattenRelevantData(bucketName: string, data: Record<string, any>, bullets: string[], maxBullets: number) {
+  const keys = Object.keys(data);
+  for (const key of keys) {
+    if (bullets.length >= maxBullets) break;
+    const value = data[key];
+
+    // Solo campos simples relevantes
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      bullets.push(`${bucketName}.${key}: ${safeText(value)}`);
+    } else if (typeof value === "object" && value !== null) {
+      // Para arrays, solo tomar los primeros 1–2 elementos
+      if (Array.isArray(value)) {
+        for (let i = 0; i < Math.min(value.length, 2) && bullets.length < maxBullets; i++) {
+          const item = value[i];
+          if (typeof item === "object" && item !== null) {
+            bullets.push(`${bucketName}.${key}[${i}]: ${JSON.stringify(item)}`);
+          } else {
+            bullets.push(`${bucketName}.${key}[${i}]: ${safeText(item)}`);
+          }
+        }
+      } else {
+        // Objeto plano: solo primer nivel y máximo 2 claves
+        const subKeys = Object.keys(value).slice(0, 2);
+        for (const subKey of subKeys) {
+          if (bullets.length >= maxBullets) break;
+          bullets.push(`${bucketName}.${subKey}: ${safeText(value[subKey])}`);
+        }
+      }
+    }
   }
-  return null;
 }
 
-// Nuevo helper recursivo para cualquier objeto o array
-function flattenData(prefix: string, data: any, bullets: string[]) {
-  if (data == null) return;
-  if (typeof data === "string" || typeof data === "number" || typeof data === "boolean") {
-    bullets.push(`${prefix}: ${safeText(data)}`);
-  } else if (Array.isArray(data)) {
-    data.forEach((item, idx) => flattenData(`${prefix}[${idx}]`, item, bullets));
-  } else if (typeof data === "object") {
-    Object.entries(data).forEach(([k, v]) => flattenData(`${prefix}.${k}`, v, bullets));
-  }
-}
-
-export function renderBullets(op: Curatable): string[] {
+export function renderBulletsV1(op: Curatable): string[] {
   const bullets: string[] = [];
-  const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
+  const maxBullets = 5;
 
+  // Filtrar buckets según topic si existe
+  const buckets: (keyof Curatable)[] = ["ficha", "comercial", "cliente", "mitos"];
   for (const bucket of buckets) {
     const data = op[bucket];
     if (!data) continue;
 
-    try {
-      flattenData(bucket, data, bullets);
-    } catch (e) {
-      bullets.push(`Error renderizando ${bucket}`);
-    }
+    // Si existe topic, solo procesar el bucket correspondiente
+    if (op.topic && bucket !== op.topic && bucket !== "comercial") continue;
+
+    flattenRelevantData(bucket, data, bullets, maxBullets);
+    if (bullets.length >= maxBullets) break;
   }
 
-  // Fallback: si no hay bullets pero hay data
+  // Fallback: si hay datos pero no se generaron bullets
   if (bullets.length === 0 && (op.ficha || op.comercial || op.cliente || op.mitos)) {
     bullets.push("Hay información disponible, pero no se pudo renderizar en bullets.");
   }
 
   return bullets;
 }
-
-// Export como renderBulletsV1 para coincidir con import en pipeline
-export { renderBullets as renderBulletsV1 };
