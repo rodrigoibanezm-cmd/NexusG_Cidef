@@ -1,5 +1,5 @@
 // PATH: /api/execute/index.js
-// LINES: ~190
+// LINES: ~185
 
 export default async function handler(req, res) {
   const trace_id = String((req.body && req.body.trace_id) || (req.query && req.query.trace_id) || "trace_unknown");
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
   function pickMitosKey(uc) {
     const s = String(uc || "").toLowerCase();
     const hasChina = s.includes("china");
-    const hasEv = s.includes("ev") || s.includes("electrico") || s.includes("eléctrico");
+    const hasEv = s.includes("china_ev") || s.includes("ev") || s.includes("electrico") || s.includes("eléctrico");
 
     if (hasChina && hasEv) return { key: "cidef:mitos:v1:mitos_v1_ev_china", label: "china_ev" };
     if (hasChina) return { key: "cidef:mitos:v1:mitos_v1_china", label: "china" };
@@ -174,4 +174,4 @@ export default async function handler(req, res) {
       error: { code: "EXECUTE_FAILED", message: e && e.message ? e.message : "Unknown error" }
     });
   }
-};
+}
