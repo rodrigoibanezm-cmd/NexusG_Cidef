@@ -1,10 +1,9 @@
 // PATH: api/execute.js
-// LINES: 64
 
 import { kv } from "@vercel/kv";
 
 /**
- * Router canónico de keys (copiado 1:1 de la definición real)
+ * Router canónico (ID lógico → KV real)
  */
 const KEY_ROUTER = {
   ficha: {
@@ -38,6 +37,19 @@ const KEY_ROUTER = {
   },
 };
 
+/**
+ * Normaliza labels humanos → IDs canónicos
+ * Ej: "Foton V9" → "foton_v9", "S50 EV" → "s50_ev"
+ */
+function normalizeModel(label) {
+  if (!label || typeof label !== "string") return null;
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_");
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "METHOD_NOT_ALLOWED" });
@@ -49,18 +61,23 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "INVALID_INPUT" });
   }
 
+  // Regla especial: mitos sin modelos → default interno
   const targets =
-    topic === "mitos"
-      ? models.length ? models : ["ev", "china", "ev_china"]
+    topic === "mitos" && models.length === 0
+      ? Object.keys(KEY_ROUTER.mitos)
       : models;
 
   const data = [];
 
-  for (const target of targets) {
-    const key = KEY_ROUTER[topic][target];
-    const payload = key ? (await kv.get(key)) ?? null : null;
+  for (const raw of targets) {
+    const canonical = normalizeModel(raw);
+    const kvKey = canonical ? KEY_ROUTER[topic][canonical] : null;
+    const payload = kvKey ? (await kv.get(kvKey)) ?? null : null;
 
-    data.push({ modelo: target, payload });
+    data.push({
+      modelo: raw,      // se devuelve el label original
+      payload,          // null si no existe
+    });
   }
 
   res.status(200).json({
