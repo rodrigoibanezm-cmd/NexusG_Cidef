@@ -1,5 +1,5 @@
 // PATH: lib/curation/semantic/curator_semantic_v1.ts
-// LINES: 88
+// LINES: 110
 
 export type DecisionStateFinal =
   | "OK"
@@ -53,6 +53,7 @@ function countDataBuckets(x: Curatable): number {
 export function curatorSemanticV1(op: unknown): CuratorSemanticResult {
   const x = (op ?? {}) as Curatable;
 
+  // 1) Bloqueos duros
   if (x.off_scope === true || x.decision_state_final === "OFF_SCOPE") {
     return {
       decision_state_final: "OFF_SCOPE",
@@ -69,6 +70,22 @@ export function curatorSemanticV1(op: unknown): CuratorSemanticResult {
     };
   }
 
+  // 2) Regla limpia y escalable:
+  // Si el orquestador ya decidió OK / OK_PARCIAL, la curadora NO lo invalida.
+  // Solo NO_DATA cuando explícitamente venga NO_DATA o cuando no haya data y no haya decisión previa.
+  if (x.decision_state_final === "OK") {
+    return { decision_state_final: "OK", partial: false, blocked_reason: null };
+  }
+
+  if (x.decision_state_final === "OK_PARCIAL") {
+    return { decision_state_final: "OK_PARCIAL", partial: true, blocked_reason: null };
+  }
+
+  if (x.decision_state_final === "NO_DATA") {
+    return { decision_state_final: "NO_DATA", partial: false, blocked_reason: "NO_DATA" };
+  }
+
+  // 3) Fallback (cuando el orquestador no seteó estado)
   if (!hasAnyData(x)) {
     return {
       decision_state_final: "NO_DATA",
