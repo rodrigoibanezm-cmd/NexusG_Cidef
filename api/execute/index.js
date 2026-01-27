@@ -1,7 +1,7 @@
 // PATH: /api/execute/index.js
 // LINES: ~190
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   const trace_id = String((req.body && req.body.trace_id) || (req.query && req.query.trace_id) || "trace_unknown");
 
   if (req.method !== "POST") {
