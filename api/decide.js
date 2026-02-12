@@ -11,7 +11,7 @@ import { kv } from "@vercel/kv";
 const MAP_ROUTER = {
   cliente: "mapa:cliente:light",
   comercial: "mapa:comercial:light",
-  ficha: "mapa:ficha:light",
+  ficha: "mapa:tecnico:light",
   mitos: "mapa:mitos:light",
 };
 
