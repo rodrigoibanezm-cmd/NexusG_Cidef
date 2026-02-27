@@ -28,13 +28,13 @@ function generateSeed() {
 
 function pickProfile(sim, seed) {
   // En piloto: leemos perfiles desde KV
-  // Se asume key: cidef:sim:profiles:buyer:v1
-  // y cidef:sim:profiles:seller:v1
+  // Se asume key: cidef:sim:buyer_profiles:v1
+  // y cidef:sim:seller_profiles:v1
 
   const key =
     sim === "compra"
-      ? "cidef:sim:profiles:buyer:v1"
-      : "cidef:sim:profiles:seller:v1";
+      ? "cidef:sim:buyer_profiles:v1"
+      : "cidef:sim:seller_profiles:v1";
 
   return { key, seed };
 }
