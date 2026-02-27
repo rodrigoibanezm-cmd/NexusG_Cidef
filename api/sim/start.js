@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       1️⃣ Leer perfiles
+       1️⃣ Leer perfiles SIEMPRE como string
        ========================= */
 
     const profilesKey =
@@ -23,25 +23,38 @@ export default async function handler(req, res) {
         ? "cidef:sim:buyer_profiles:v1"
         : "cidef:sim:seller_profiles:v1";
 
-    const rawProfiles = await kv.get(profilesKey);
+    const exists = await kv.sendCommand(["EXISTS", profilesKey]);
+
+    if (!exists) {
+      return res.status(500).json({
+        error: "PROFILES_KEY_NOT_FOUND",
+        key: profilesKey
+      });
+    }
+
+    const rawProfiles = await kv.sendCommand(["GET", profilesKey]);
 
     if (!rawProfiles) {
-      return res.status(500).json({ error: "PROFILES_NOT_FOUND" });
+      return res.status(500).json({
+        error: "PROFILES_EMPTY",
+        key: profilesKey
+      });
     }
 
     let profilesData;
 
     try {
-      profilesData =
-        typeof rawProfiles === "string"
-          ? JSON.parse(rawProfiles)
-          : rawProfiles;
-    } catch {
-      return res.status(500).json({ error: "PROFILES_PARSE_ERROR" });
+      profilesData = JSON.parse(rawProfiles);
+    } catch (err) {
+      return res.status(500).json({
+        error: "PROFILES_INVALID_JSON"
+      });
     }
 
     if (!profilesData?.profiles?.length) {
-      return res.status(500).json({ error: "PROFILES_EMPTY" });
+      return res.status(500).json({
+        error: "PROFILES_STRUCTURE_INVALID"
+      });
     }
 
     const profiles = profilesData.profiles;
@@ -51,7 +64,7 @@ export default async function handler(req, res) {
        ========================= */
 
     const lastProfileKey = `cidef:sim:last_profile:${mode}:v1`;
-    const lastProfileId = await kv.get(lastProfileKey);
+    const lastProfileId = await kv.sendCommand(["GET", lastProfileKey]);
 
     let availableProfiles = profiles;
 
@@ -87,20 +100,28 @@ export default async function handler(req, res) {
 
     const stateKey = `cidef:sim:run:${sim_run_id}:state:v1`;
 
-    await kv.set(stateKey, {
-      sim_run_id,
-      mode,
-      profile_id: selectedProfile.id,
-      turn: 0,
-      created_at: Date.now(),
-      finished: false,
-    });
+    await kv.sendCommand([
+      "SET",
+      stateKey,
+      JSON.stringify({
+        sim_run_id,
+        mode,
+        profile_id: selectedProfile.id,
+        turn: 0,
+        created_at: Date.now(),
+        finished: false
+      })
+    ]);
 
     /* =========================
        6️⃣ Guardar último perfil
        ========================= */
 
-    await kv.set(lastProfileKey, selectedProfile.id);
+    await kv.sendCommand([
+      "SET",
+      lastProfileKey,
+      selectedProfile.id
+    ]);
 
     /* =========================
        7️⃣ Responder
@@ -109,13 +130,13 @@ export default async function handler(req, res) {
     return res.status(200).json({
       sim_run_id,
       mode,
-      profile: selectedProfile,
+      profile: selectedProfile
     });
 
   } catch (error) {
-    console.error("SIM_START_ERROR:", error);
+    console.error("SIM_START_FATAL:", error);
     return res.status(500).json({
-      error: "SIM_START_INTERNAL_ERROR",
+      error: "SIM_START_INTERNAL_ERROR"
     });
   }
 }
