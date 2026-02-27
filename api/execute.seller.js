@@ -12,15 +12,16 @@ export default async function executeSeller(req, res) {
 
   const stateKey = `cidef:sim:run:${sim_run_id}:state:v1`;
 
-  const raw = await kv.sendCommand(["GET", stateKey]);
+  const raw = await kv.get(stateKey);
 
   if (!raw) {
     return res.status(400).json({ error: "SIM_RUN_NOT_FOUND" });
   }
 
   let sim_state;
+
   try {
-    sim_state = JSON.parse(raw);
+    sim_state = typeof raw === "string" ? JSON.parse(raw) : raw;
   } catch {
     return res.status(500).json({ error: "SIM_STATE_INVALID_JSON" });
   }
@@ -31,7 +32,7 @@ export default async function executeSeller(req, res) {
 
   sim_state.turn = (sim_state.turn || 0) + 1;
 
-  await kv.sendCommand(["SET", stateKey, JSON.stringify(sim_state)]);
+  await kv.set(stateKey, JSON.stringify(sim_state));
 
   return executeNormal(req, res);
 }
