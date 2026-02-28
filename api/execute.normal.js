@@ -1,4 +1,4 @@
-// PATH: api/execute.js
+// PATH: api/execute.normal.js
 
 import { kv } from "@vercel/kv";
 
@@ -37,10 +37,6 @@ const KEY_ROUTER = {
   },
 };
 
-/**
- * Normaliza labels humanos → IDs canónicos
- * Ej: "Foton V9" → "foton_v9", "S50 EV" → "s50_ev"
- */
 function normalizeModel(label) {
   if (!label || typeof label !== "string") return null;
   return label
@@ -57,11 +53,13 @@ export default async function handler(req, res) {
 
   const { trace_id = null, topic, models = [] } = req.body || {};
 
+  console.log("INPUT:", { trace_id, topic, models });
+
   if (!topic || !KEY_ROUTER[topic] || !Array.isArray(models)) {
+    console.log("INVALID_INPUT");
     return res.status(400).json({ error: "INVALID_INPUT" });
   }
 
-  // Regla especial: mitos sin modelos → default interno
   const targets =
     topic === "mitos" && models.length === 0
       ? Object.keys(KEY_ROUTER.mitos)
@@ -72,15 +70,25 @@ export default async function handler(req, res) {
   for (const raw of targets) {
     const canonical = normalizeModel(raw);
     const kvKey = canonical ? KEY_ROUTER[topic][canonical] : null;
-    const payload = kvKey ? (await kv.get(kvKey)) ?? null : null;
+
+    console.log("MODEL RAW:", raw);
+    console.log("MODEL CANONICAL:", canonical);
+    console.log("KV KEY:", kvKey);
+
+    let payload = null;
+
+    if (kvKey) {
+      payload = await kv.get(kvKey);
+      console.log("KV VALUE:", payload);
+    }
 
     data.push({
-      modelo: raw,      // se devuelve el label original
-      payload,          // null si no existe
+      modelo: raw,
+      payload,
     });
   }
 
-  res.status(200).json({
+  return res.status(200).json({
     trace_id,
     topic,
     data,
