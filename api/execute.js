@@ -11,22 +11,38 @@ export default async function handler(req, res) {
 
   const { sim = null } = req.body || {};
 
-  // 🔹 Flujo normal
+  // 🔹 1️⃣ Siempre obtener payload normal primero
+  const normalPayload = await executeNormal(req);
+
+  if (!normalPayload || normalPayload.error) {
+    return res.status(500).json(normalPayload || { error: "EXECUTE_NORMAL_FAILED" });
+  }
+
+  // 🔹 2️⃣ Si no es modo SIM → responder normal
   if (!sim) {
-    return executeNormal(req, res);
+    return res.status(200).json(normalPayload);
   }
 
-  // 🔹 Sim comprador
+  // 🔹 3️⃣ Si es SIM compra
   if (sim === "compra") {
-    return executeBuyer(req, res);
+    const simBlock = await executeBuyer(req);
+
+    return res.status(200).json({
+      ...normalPayload,
+      sim: simBlock
+    });
   }
 
-  // 🔹 Sim vendedor
+  // 🔹 4️⃣ Si es SIM venta
   if (sim === "venta") {
-    return executeSeller(req, res);
+    const simBlock = await executeSeller(req);
+
+    return res.status(200).json({
+      ...normalPayload,
+      sim: simBlock
+    });
   }
 
-  // 🔹 Si viene algo raro
   return res.status(400).json({
     error: "INVALID_SIM_MODE",
   });
