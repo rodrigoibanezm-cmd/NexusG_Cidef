@@ -15,14 +15,20 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       1️⃣ Leer behavior_core
+       1️⃣ Leer behavior_core según modo
        ========================= */
 
-    const rawBehaviorCore = await kv.get("cidef:sim:behavior_core:v1");
+    const behaviorKey =
+      mode === "venta"
+        ? "cidef:sim:behavior_core_seller:v1"
+        : "cidef:sim:behavior_core_buyer:v1";
+
+    const rawBehaviorCore = await kv.get(behaviorKey);
 
     if (!rawBehaviorCore) {
       return res.status(500).json({
         error: "BEHAVIOR_CORE_NOT_FOUND",
+        key: behaviorKey,
       });
     }
 
@@ -40,7 +46,7 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       2️⃣ Leer perfiles
+       2️⃣ Leer perfiles según modo
        ========================= */
 
     const profilesKey =
