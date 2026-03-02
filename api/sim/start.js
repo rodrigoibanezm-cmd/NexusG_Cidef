@@ -45,6 +45,19 @@ export default async function handler(req, res) {
       });
     }
 
+    // ✅ Derivar initial_phase para state
+    const initial_phase =
+      mode === "venta"
+        ? behaviorCore?.behavior_core?.phase_model?.initial_phase
+        : behaviorCore?.behavior_core_buyer?.phase_model?.initial_phase;
+
+    if (!initial_phase) {
+      return res.status(500).json({
+        error: "BEHAVIOR_CORE_MISSING_INITIAL_PHASE",
+        key: behaviorKey,
+      });
+    }
+
     /* =========================
        2️⃣ Leer perfiles según modo
        ========================= */
@@ -94,19 +107,14 @@ export default async function handler(req, res) {
     let availableProfiles = profiles;
 
     if (lastProfileId && profiles.length > 1) {
-      availableProfiles = profiles.filter(
-        (p) => p.id !== lastProfileId
-      );
+      availableProfiles = profiles.filter((p) => p.id !== lastProfileId);
     }
 
     /* =========================
        4️⃣ Elegir perfil aleatorio
        ========================= */
 
-    const randomIndex = Math.floor(
-      Math.random() * availableProfiles.length
-    );
-
+    const randomIndex = Math.floor(Math.random() * availableProfiles.length);
     const selectedProfile = availableProfiles[randomIndex];
 
     /* =========================
@@ -114,10 +122,7 @@ export default async function handler(req, res) {
        ========================= */
 
     const sim_run_id =
-      "sim_" +
-      Date.now() +
-      "_" +
-      Math.random().toString(36).slice(2, 8);
+      "sim_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 
     /* =========================
        6️⃣ Crear estado inicial
@@ -131,6 +136,7 @@ export default async function handler(req, res) {
         sim_run_id,
         mode,
         profile_id: selectedProfile.id,
+        current_phase: initial_phase, // ✅ NUEVO
         turn: 0,
         created_at: Date.now(),
         finished: false,
@@ -153,7 +159,6 @@ export default async function handler(req, res) {
       behavior_core: behaviorCore,
       profile: selectedProfile,
     });
-
   } catch (error) {
     console.error("SIM_START_FATAL:", error);
     return res.status(500).json({
