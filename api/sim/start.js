@@ -15,7 +15,32 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       1️⃣ Leer perfiles
+       1️⃣ Leer behavior_core
+       ========================= */
+
+    const rawBehaviorCore = await kv.get("cidef:sim:behavior_core:v1");
+
+    if (!rawBehaviorCore) {
+      return res.status(500).json({
+        error: "BEHAVIOR_CORE_NOT_FOUND",
+      });
+    }
+
+    let behaviorCore;
+
+    try {
+      behaviorCore =
+        typeof rawBehaviorCore === "string"
+          ? JSON.parse(rawBehaviorCore)
+          : rawBehaviorCore;
+    } catch {
+      return res.status(500).json({
+        error: "BEHAVIOR_CORE_INVALID_JSON",
+      });
+    }
+
+    /* =========================
+       2️⃣ Leer perfiles
        ========================= */
 
     const profilesKey =
@@ -54,7 +79,7 @@ export default async function handler(req, res) {
     const profiles = profilesData.profiles;
 
     /* =========================
-       2️⃣ Evitar repetir consecutivo
+       3️⃣ Evitar repetir consecutivo
        ========================= */
 
     const lastProfileKey = `cidef:sim:last_profile:${mode}:v1`;
@@ -69,7 +94,7 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       3️⃣ Elegir perfil aleatorio
+       4️⃣ Elegir perfil aleatorio
        ========================= */
 
     const randomIndex = Math.floor(
@@ -79,7 +104,7 @@ export default async function handler(req, res) {
     const selectedProfile = availableProfiles[randomIndex];
 
     /* =========================
-       4️⃣ Generar sim_run_id
+       5️⃣ Generar sim_run_id
        ========================= */
 
     const sim_run_id =
@@ -89,7 +114,7 @@ export default async function handler(req, res) {
       Math.random().toString(36).slice(2, 8);
 
     /* =========================
-       5️⃣ Crear estado inicial
+       6️⃣ Crear estado inicial
        ========================= */
 
     const stateKey = `cidef:sim:run:${sim_run_id}:state:v1`;
@@ -107,18 +132,19 @@ export default async function handler(req, res) {
     );
 
     /* =========================
-       6️⃣ Guardar último perfil
+       7️⃣ Guardar último perfil
        ========================= */
 
     await kv.set(lastProfileKey, selectedProfile.id);
 
     /* =========================
-       7️⃣ Responder
+       8️⃣ Responder
        ========================= */
 
     return res.status(200).json({
       sim_run_id,
       mode,
+      behavior_core: behaviorCore,
       profile: selectedProfile,
     });
 
