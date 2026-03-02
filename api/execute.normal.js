@@ -2,9 +2,6 @@
 
 import { kv } from "@vercel/kv";
 
-/**
- * Router canónico (ID lógico → KV real)
- */
 const KEY_ROUTER = {
   ficha: {
     t5: "cidef:fichas:v1:ft_v1_t5",
@@ -46,18 +43,12 @@ function normalizeModel(label) {
     .replace(/-+/g, "_");
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "METHOD_NOT_ALLOWED" });
-  }
-
-  const { trace_id = null, topic, models = [] } = req.body || {};
-
-  console.log("INPUT:", { trace_id, topic, models });
+// 🔹 Ahora es función pura
+export default async function executeNormal(body) {
+  const { trace_id = null, topic, models = [] } = body || {};
 
   if (!topic || !KEY_ROUTER[topic] || !Array.isArray(models)) {
-    console.log("INVALID_INPUT");
-    return res.status(400).json({ error: "INVALID_INPUT" });
+    return { error: "INVALID_INPUT" };
   }
 
   const targets =
@@ -71,15 +62,10 @@ export default async function handler(req, res) {
     const canonical = normalizeModel(raw);
     const kvKey = canonical ? KEY_ROUTER[topic][canonical] : null;
 
-    console.log("MODEL RAW:", raw);
-    console.log("MODEL CANONICAL:", canonical);
-    console.log("KV KEY:", kvKey);
-
     let payload = null;
 
     if (kvKey) {
       payload = await kv.get(kvKey);
-      console.log("KV VALUE:", payload);
     }
 
     data.push({
@@ -88,9 +74,9 @@ export default async function handler(req, res) {
     });
   }
 
-  return res.status(200).json({
+  return {
     trace_id,
     topic,
     data,
-  });
+  };
 }
