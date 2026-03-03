@@ -2,10 +2,11 @@
 
 import { kv } from "@vercel/kv";
 import { applyTurnUpdate } from "./sim/updateTurn.js";
+import { applyPhaseTransition } from "./sim/applyPhaseTransition.js";
 
 export default async function executeSeller(body) {
   try {
-    const { sim_run_id = null } = body || {};
+    const { sim_run_id = null, proposed_next_phase = null } = body || {};
 
     if (!sim_run_id) {
       return { error: "SIM_RUN_REQUIRED" };
@@ -30,9 +31,8 @@ export default async function executeSeller(body) {
       return { error: "SIM_ALREADY_FINISHED" };
     }
 
-    // 1️⃣ Aplicar lifecycle de turno
-    const updatedState = applyTurnUpdate(sim_state);
-    await kv.set(stateKey, JSON.stringify(updatedState));
+    // 1️⃣ Lifecycle de turno
+    const lifecycleState = applyTurnUpdate(sim_state);
 
     // 2️⃣ Behavior core seller
     const rawBehavior = await kv.get(
@@ -48,7 +48,17 @@ export default async function executeSeller(body) {
         ? JSON.parse(rawBehavior)
         : rawBehavior;
 
-    // 3️⃣ Perfil seller
+    // 3️⃣ Aplicar transición estructural
+    const finalState = applyPhaseTransition({
+      sim_state: lifecycleState,
+      behavior_core,
+      proposed_next_phase
+    });
+
+    // 4️⃣ Persistir estado final (una sola escritura coherente)
+    await kv.set(stateKey, JSON.stringify(finalState));
+
+    // 5️⃣ Perfil seller
     const rawProfiles = await kv.get(
       "cidef:sim:seller_profiles:v1"
     );
@@ -63,22 +73,22 @@ export default async function executeSeller(body) {
         : rawProfiles;
 
     const profile = profilesData.profiles.find(
-      (p) => p.id === updatedState.profile_id
+      (p) => p.id === finalState.profile_id
     );
 
     if (!profile) {
       return { error: "SELLER_PROFILE_NOT_FOUND" };
     }
 
-    // 4️⃣ Devolver bloque SIM
+    // 6️⃣ Devolver bloque SIM
     return {
       active: true,
       mode: "venta",
       sim_run_id,
-      turn: updatedState.turn,
-      current_phase: updatedState.current_phase,
-      finished: updatedState.finished,
-      finish_reason: updatedState.finish_reason,
+      turn: finalState.turn,
+      current_phase: finalState.current_phase,
+      finished: finalState.finished,
+      finish_reason: finalState.finish_reason,
       profile,
       behavior_core
     };
