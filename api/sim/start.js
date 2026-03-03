@@ -1,6 +1,7 @@
 // PATH: api/sim/start.js
 
 import { kv } from "@vercel/kv";
+import { createSimRun } from "./createRun.js";
 
 export default async function handler(req, res) {
   try {
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       1️⃣ Leer behavior_core según modo
+       1️⃣ Cargar behavior_core
        ========================= */
 
     const behaviorKey =
@@ -45,7 +46,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ Derivar initial_phase para state
     const initial_phase =
       mode === "venta"
         ? behaviorCore?.behavior_core?.phase_model?.initial_phase
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
     }
 
     /* =========================
-       2️⃣ Leer perfiles según modo
+       2️⃣ Cargar perfiles
        ========================= */
 
     const profilesKey =
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
     const profiles = profilesData.profiles;
 
     /* =========================
-       3️⃣ Evitar repetir consecutivo
+       3️⃣ Evitar repetir perfil consecutivo
        ========================= */
 
     const lastProfileKey = `cidef:sim:last_profile:${mode}:v1`;
@@ -107,50 +107,32 @@ export default async function handler(req, res) {
     let availableProfiles = profiles;
 
     if (lastProfileId && profiles.length > 1) {
-      availableProfiles = profiles.filter((p) => p.id !== lastProfileId);
+      availableProfiles = profiles.filter(
+        (p) => p.id !== lastProfileId
+      );
     }
 
     /* =========================
        4️⃣ Elegir perfil aleatorio
        ========================= */
 
-    const randomIndex = Math.floor(Math.random() * availableProfiles.length);
+    const randomIndex = Math.floor(
+      Math.random() * availableProfiles.length
+    );
     const selectedProfile = availableProfiles[randomIndex];
 
     /* =========================
-       5️⃣ Generar sim_run_id
+       5️⃣ Crear SIM RUN (dominio)
        ========================= */
 
-    const sim_run_id =
-      "sim_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    const { sim_run_id } = await createSimRun({
+      mode,
+      profile_id: selectedProfile.id,
+      initial_phase
+    });
 
     /* =========================
-       6️⃣ Crear estado inicial
-       ========================= */
-
-    const stateKey = `cidef:sim:run:${sim_run_id}:state:v1`;
-
-    await kv.set(
-      stateKey,
-      JSON.stringify({
-        sim_run_id,
-        mode,
-        profile_id: selectedProfile.id,
-        current_phase: initial_phase, // ✅ NUEVO
-        turn: 0,
-        created_at: Date.now(),
-        finished: false,
-      })
-    );
-
-    /* =========================
-       7️⃣ Guardar último perfil
-       ========================= */
-
-    await kv.set(lastProfileKey, selectedProfile.id);
-
-    /* =========================
-       8️⃣ Responder
+       6️⃣ Responder
        ========================= */
 
     return res.status(200).json({
@@ -159,6 +141,7 @@ export default async function handler(req, res) {
       behavior_core: behaviorCore,
       profile: selectedProfile,
     });
+
   } catch (error) {
     console.error("SIM_START_FATAL:", error);
     return res.status(500).json({
