@@ -1,6 +1,7 @@
 // PATH: api/execute.buyer.js
 
 import { kv } from "@vercel/kv";
+import { applyTurnUpdate } from "./sim/updateTurn.js";
 
 export default async function executeBuyer(body) {
   try {
@@ -29,9 +30,10 @@ export default async function executeBuyer(body) {
       return { error: "SIM_ALREADY_FINISHED" };
     }
 
-    // 1️⃣ Incrementar turno
-    sim_state.turn = (sim_state.turn || 0) + 1;
-    await kv.set(stateKey, JSON.stringify(sim_state));
+    // 1️⃣ Aplicar lifecycle de turno
+    const updatedState = applyTurnUpdate(sim_state);
+
+    await kv.set(stateKey, JSON.stringify(updatedState));
 
     // 2️⃣ Behavior core buyer
     const rawBehavior = await kv.get(
@@ -62,21 +64,22 @@ export default async function executeBuyer(body) {
         : rawProfiles;
 
     const profile = profilesData.profiles.find(
-      (p) => p.id === sim_state.profile_id
+      (p) => p.id === updatedState.profile_id
     );
 
     if (!profile) {
       return { error: "BUYER_PROFILE_NOT_FOUND" };
     }
 
-    // 4️⃣ Devolver solo bloque SIM (NO res, NO executeNormal)
+    // 4️⃣ Devolver bloque SIM
     return {
       active: true,
       mode: "compra",
       sim_run_id,
-      turn: sim_state.turn,
-      current_phase: sim_state.current_phase,
-      finished: sim_state.finished,
+      turn: updatedState.turn,
+      current_phase: updatedState.current_phase,
+      finished: updatedState.finished,
+      finish_reason: updatedState.finish_reason,
       profile,
       behavior_core
     };
