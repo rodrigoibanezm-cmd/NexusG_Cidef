@@ -27,10 +27,6 @@ function generateSeed() {
 }
 
 function pickProfile(sim, seed) {
-  // En piloto: leemos perfiles desde KV
-  // Se asume key: cidef:sim:buyer_profiles:v1
-  // y cidef:sim:seller_profiles:v1
-
   const key =
     sim === "compra"
       ? "cidef:sim:buyer_profiles:v1"
@@ -57,9 +53,14 @@ export default async function handler(req, res) {
      BLOQUE SIM
      ========================= */
 
-  if (sim !== null) {
-    if (!sim_run_id) {
-      // PRIMER LLAMADO → crear run
+  // SIM activo si:
+  // - se inicia (sim != null)
+  // - o ya existe run (sim_run_id != null)
+
+  if (sim !== null || sim_run_id !== null) {
+
+    // INICIO DE SIM
+    if (sim !== null && !sim_run_id) {
 
       const newRunId = generateRunId();
       const seed = generateSeed();
@@ -93,8 +94,10 @@ export default async function handler(req, res) {
         sim_run_id: newRunId,
         profile,
       };
-    } else {
-      // VALIDAR QUE EL RUN EXISTA
+    }
+
+    // CONTINUACIÓN DE SIM
+    else if (sim_run_id) {
 
       const state = await kv.get(
         `cidef:sim:run:${sim_run_id}:state:v1`
@@ -106,6 +109,10 @@ export default async function handler(req, res) {
           trace_id,
         });
       }
+
+      sim_context = {
+        sim_run_id,
+      };
     }
   }
 
@@ -117,6 +124,7 @@ export default async function handler(req, res) {
 
   for (const logicalMap of requested_maps) {
     const kvKey = MAP_ROUTER[logicalMap];
+
     maps[logicalMap] = kvKey
       ? (await kv.get(kvKey)) ?? null
       : null;
