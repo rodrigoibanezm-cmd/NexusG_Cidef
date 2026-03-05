@@ -5,14 +5,20 @@ import { applyTurnUpdate } from "./sim/updateTurn.js";
 import { applyPhaseTransition } from "./sim/applyPhaseTransition.js";
 
 export default async function executeBuyer(body) {
+
   try {
-    const { sim_run_id = null, proposed_next_phase = null } = body || {};
+
+    const {
+      sim_run_id = null,
+      proposed_next_phase = null
+    } = body || {};
 
     if (!sim_run_id) {
       return { error: "SIM_RUN_REQUIRED" };
     }
 
     const stateKey = `cidef:sim:run:${sim_run_id}:state:v1`;
+
     const raw = await kv.get(stateKey);
 
     if (!raw) {
@@ -23,7 +29,8 @@ export default async function executeBuyer(body) {
 
     try {
       sim_state = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch {
+    }
+    catch {
       return { error: "SIM_STATE_INVALID_JSON" };
     }
 
@@ -48,15 +55,22 @@ export default async function executeBuyer(body) {
         ? JSON.parse(rawBehavior)
         : rawBehavior;
 
-    // 3️⃣ Aplicar transición estructural
-    const finalState = applyPhaseTransition({
-      sim_state: lifecycleState,
-      behavior_core,
-      proposed_next_phase
-    });
+    // 3️⃣ Estado final (transición solo si sigue activo)
+    let finalState = lifecycleState;
 
-    // 4️⃣ Persistir estado final (una sola escritura coherente)
-    await kv.set(stateKey, JSON.stringify(finalState));
+    if (!lifecycleState.finished) {
+      finalState = applyPhaseTransition({
+        sim_state: lifecycleState,
+        behavior_core,
+        proposed_next_phase
+      });
+    }
+
+    // 4️⃣ Persistir estado final
+    await kv.set(
+      stateKey,
+      JSON.stringify(finalState)
+    );
 
     // 5️⃣ Perfil buyer
     const rawProfiles = await kv.get(
@@ -80,7 +94,7 @@ export default async function executeBuyer(body) {
       return { error: "BUYER_PROFILE_NOT_FOUND" };
     }
 
-    // 6️⃣ Devolver bloque SIM
+    // 6️⃣ Respuesta SIM
     return {
       active: true,
       mode: "compra",
@@ -93,8 +107,15 @@ export default async function executeBuyer(body) {
       behavior_core
     };
 
-  } catch (error) {
-    console.error("EXECUTE_BUYER_FATAL:", error);
-    return { error: "EXECUTE_BUYER_INTERNAL_ERROR" };
   }
+  catch (error) {
+
+    console.error("EXECUTE_BUYER_FATAL:", error);
+
+    return {
+      error: "EXECUTE_BUYER_INTERNAL_ERROR"
+    };
+
+  }
+
 }
