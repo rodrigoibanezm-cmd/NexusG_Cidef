@@ -31,13 +31,11 @@ export default async function executeSeller(body) {
       return { error: "SIM_ALREADY_FINISHED" };
     }
 
-    // 1️⃣ Lifecycle de turno
+    // 1️⃣ Lifecycle del turno
     const lifecycleState = applyTurnUpdate(sim_state);
 
     // 2️⃣ Behavior core seller
-    const rawBehavior = await kv.get(
-      "cidef:sim:behavior_core_seller:v1"
-    );
+    const rawBehavior = await kv.get("cidef:sim:behavior_core_seller:v1");
 
     if (!rawBehavior) {
       return { error: "BEHAVIOR_CORE_SELLER_NOT_FOUND" };
@@ -48,20 +46,22 @@ export default async function executeSeller(body) {
         ? JSON.parse(rawBehavior)
         : rawBehavior;
 
-    // 3️⃣ Aplicar transición estructural
-    const finalState = applyPhaseTransition({
-      sim_state: lifecycleState,
-      behavior_core,
-      proposed_next_phase
-    });
+    // 3️⃣ Estado final (transición solo si sigue activo)
+    let finalState = lifecycleState;
 
-    // 4️⃣ Persistir estado final (una sola escritura coherente)
+    if (!lifecycleState.finished) {
+      finalState = applyPhaseTransition({
+        sim_state: lifecycleState,
+        behavior_core,
+        proposed_next_phase
+      });
+    }
+
+    // 4️⃣ Persistir estado
     await kv.set(stateKey, JSON.stringify(finalState));
 
     // 5️⃣ Perfil seller
-    const rawProfiles = await kv.get(
-      "cidef:sim:seller_profiles:v1"
-    );
+    const rawProfiles = await kv.get("cidef:sim:seller_profiles:v1");
 
     if (!rawProfiles) {
       return { error: "SELLER_PROFILES_NOT_FOUND" };
@@ -80,7 +80,7 @@ export default async function executeSeller(body) {
       return { error: "SELLER_PROFILE_NOT_FOUND" };
     }
 
-    // 6️⃣ Devolver bloque SIM
+    // 6️⃣ Respuesta SIM
     return {
       active: true,
       mode: "venta",
@@ -95,6 +95,9 @@ export default async function executeSeller(body) {
 
   } catch (error) {
     console.error("EXECUTE_SELLER_FATAL:", error);
-    return { error: "EXECUTE_SELLER_INTERNAL_ERROR" };
+
+    return {
+      error: "EXECUTE_SELLER_INTERNAL_ERROR"
+    };
   }
 }
