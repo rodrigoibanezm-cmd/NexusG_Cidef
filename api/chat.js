@@ -1,10 +1,8 @@
 export default async function handler(req, res) {
-  // ✅ CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // ✅ manejar preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -14,7 +12,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message } = req.body || {};
+    // 🔥 FIX CLAVE: parsear body correctamente
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const message = body?.message;
+
+    if (!message) {
+      return res.status(200).json({
+        sessionId: "test-session",
+        messages: [],
+        error: "validation_error"
+      });
+    }
 
     if (message === "error") {
       return res.status(200).json({
@@ -28,13 +36,14 @@ export default async function handler(req, res) {
       return res.status(200).send("esto no es json");
     }
 
+    // ✅ respuesta válida
     return res.status(200).json({
       sessionId: "test-session",
       messages: [
         {
           id: Date.now().toString(),
           role: "assistant",
-          content: "Hola, esto es una respuesta de prueba",
+          content: `Respuesta a: ${message}`,
           timestamp: Date.now()
         }
       ],
@@ -42,8 +51,8 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    return res.status(500).json({
-      sessionId: null,
+    return res.status(200).json({
+      sessionId: "test-session",
       messages: [],
       error: "backend_error"
     });
