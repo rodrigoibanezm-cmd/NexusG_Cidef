@@ -1,3 +1,5 @@
+let history = [];
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -12,48 +14,43 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔥 FIX CLAVE: parsear body correctamente
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const message = body?.message;
 
     if (!message) {
       return res.status(200).json({
         sessionId: "test-session",
-        messages: [],
+        messages: history,
         error: "validation_error"
       });
     }
 
-    if (message === "error") {
-      return res.status(200).json({
-        sessionId: "test-session",
-        messages: [],
-        error: "backend_error"
-      });
-    }
+    // agregar user
+    history.push({
+      id: Date.now().toString(),
+      role: "user",
+      content: message,
+      timestamp: Date.now()
+    });
 
-    if (message === "invalid") {
-      return res.status(200).send("esto no es json");
-    }
+    // agregar assistant
+    history.push({
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: `Respuesta a: ${message}`,
+      timestamp: Date.now()
+    });
 
-    // ✅ respuesta válida
     return res.status(200).json({
       sessionId: "test-session",
-      messages: [
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `Respuesta a: ${message}`,
-          timestamp: Date.now()
-        }
-      ],
+      messages: history,
       error: null
     });
 
   } catch (err) {
     return res.status(200).json({
       sessionId: "test-session",
-      messages: [],
+      messages: history,
       error: "backend_error"
     });
   }
