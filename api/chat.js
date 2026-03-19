@@ -1,3 +1,5 @@
+import execute from "./execute.js";
+
 let history = [];
 
 export default async function handler(req, res) {
@@ -14,44 +16,61 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+
     const message = body?.message;
+    const mode = body?.metadata?.mode;
 
     if (!message) {
       return res.status(200).json({
         sessionId: "test-session",
         messages: history,
-        error: "validation_error"
+        error: "validation_error",
       });
     }
 
-    // agregar user
-    history.push({
-      id: Date.now().toString(),
-      role: "user",
-      content: message,
-      timestamp: Date.now()
+    // 🔥 llamada a tu lógica real
+    const execResponse = await execute({
+      ...body,
+      sim: mode === "venta" ? "venta" : null,
     });
 
-    // agregar assistant
+    // 🔥 transformar respuesta a texto
+    let content = "";
+
+    if (execResponse?.data) {
+      content = JSON.stringify(execResponse.data, null, 2);
+    } else if (execResponse?.sim) {
+      content = JSON.stringify(execResponse.sim, null, 2);
+    } else {
+      content = "Sin datos disponibles";
+    }
+
+    // 🔥 mantener historial
     history.push({
-      id: (Date.now() + 1).toString(),
+      role: "user",
+      content: message,
+    });
+
+    history.push({
       role: "assistant",
-      content: `Respuesta a: ${message}`,
-      timestamp: Date.now()
+      content,
     });
 
     return res.status(200).json({
       sessionId: "test-session",
       messages: history,
-      error: null
+      error: null,
     });
 
   } catch (err) {
+    console.error(err);
+
     return res.status(200).json({
       sessionId: "test-session",
       messages: history,
-      error: "backend_error"
+      error: "backend_error",
     });
   }
 }
