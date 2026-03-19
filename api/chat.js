@@ -1,4 +1,4 @@
-import execute from "./execute.js";
+import executeNormal from "./execute.normal.js";
 
 let history = [];
 
@@ -20,7 +20,6 @@ export default async function handler(req, res) {
       typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
     const message = body?.message;
-    const mode = body?.metadata?.mode;
 
     if (!message) {
       return res.status(200).json({
@@ -30,32 +29,31 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🔥 llamada a tu lógica real
-    const execResponse = await execute({
-      ...body,
-      sim: mode === "venta" ? "venta" : null,
+    // Llamada estable a la lógica real
+    const execResponse = await executeNormal({
+      trace_id: `trace_${Date.now()}`,
+      topic: "cliente",
+      models: ["t5"],
     });
 
-    // 🔥 transformar respuesta a texto
     let content = "";
 
     if (execResponse?.data) {
       content = JSON.stringify(execResponse.data, null, 2);
-    } else if (execResponse?.sim) {
-      content = JSON.stringify(execResponse.sim, null, 2);
     } else {
       content = "Sin datos disponibles";
     }
 
-    // 🔥 mantener historial
     history.push({
       role: "user",
       content: message,
+      timestamp: Date.now(),
     });
 
     history.push({
       role: "assistant",
       content,
+      timestamp: Date.now(),
     });
 
     return res.status(200).json({
@@ -63,9 +61,8 @@ export default async function handler(req, res) {
       messages: history,
       error: null,
     });
-
   } catch (err) {
-    console.error(err);
+    console.error("CHAT_ERROR:", err);
 
     return res.status(200).json({
       sessionId: "test-session",
