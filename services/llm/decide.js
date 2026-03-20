@@ -4,20 +4,13 @@ import { callLLM } from "./callLLM.js";
 
 export async function decide(message) {
   const prompt = `
-Analiza la pregunta del usuario y decide qué pedir al backend.
+Responde SOLO JSON válido. No agregues texto.
+
+Formato:
+{"topic":"...","models":[]}
 
 Capas válidas:
-- cliente
-- comercial
-- ficha
-- mitos
-
-Responde SOLO en JSON válido (sin texto extra):
-
-{
-  "topic": "...",
-  "models": []
-}
+cliente | comercial | ficha | mitos
 
 Usuario:
 ${message}
@@ -25,12 +18,19 @@ ${message}
 
   const raw = await callLLM(prompt);
 
+  // 🔥 limpieza básica (clave)
+  const cleaned = raw
+    .replace(/```json/g, "")
+    .replace(/```/g, "")
+    .trim();
+
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed.topic) throw new Error("invalid");
+    const parsed = JSON.parse(cleaned);
+
+    if (!parsed.topic) throw new Error();
+
     return parsed;
   } catch {
-    // fallback mínimo (no romper flujo)
     return {
       topic: "ficha",
       models: ["t5"]
