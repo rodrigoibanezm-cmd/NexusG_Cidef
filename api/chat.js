@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     }
 
     // 1. decidir dinámicamente
-    const decision = { topic: "fichas", models: ["mage"] };
+    const decision = { topic: "ficha", models: ["mage"] };
 
     // 2. ejecutar backend real
     const execResponse = await executeNormal({
