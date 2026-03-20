@@ -1,5 +1,5 @@
 import executeNormal from "./execute.normal.js";
-import { callLLM } from "@/services/llm/callLLM";
+import { callLLM } from "../services/llm/callLLM.js";
 
 let history = [];
 
@@ -30,17 +30,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // backend (lo dejamos, pero aún no usamos su data)
     await executeNormal({
       trace_id: `trace_${Date.now()}`,
       topic: "cliente",
       models: ["t5"],
     });
 
-    // LLM REAL
-    const content = await callLLM(
-      "Responde en una palabra: ok"
-    );
+    const content = await callLLM("Responde solo: ok");
 
     history.push({
       role: "user",
