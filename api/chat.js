@@ -1,4 +1,5 @@
 import executeNormal from "./execute.normal.js";
+import { callLLM } from "@/services/llm/callLLM";
 
 let history = [];
 
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
     let content = "";
 
     if (execResponse?.data) {
-      content = JSON.stringify(execResponse.data, null, 2);
+      content = await callLLM("Responde solo: ok");
     } else {
       content = "Sin datos disponibles";
     }
