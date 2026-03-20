@@ -3,34 +3,36 @@
 import { callLLM } from "./callLLM.js";
 
 export async function decide(message) {
-  const prompt = `
-Responde SOLO JSON válido. No agregues texto.
+  try {
+    const prompt = `
+Responde SOLO JSON válido.
 
 Formato:
 {"topic":"...","models":[]}
 
-Capas válidas:
+Opciones topic:
 cliente | comercial | ficha | mitos
 
 Usuario:
 ${message}
 `;
 
-  const raw = await callLLM(prompt);
+    const raw = await callLLM(prompt);
 
-  // 🔥 limpieza básica (clave)
-  const cleaned = raw
-    .replace(/```json/g, "")
-    .replace(/```/g, "")
-    .trim();
+    const cleaned = raw
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
 
-  try {
     const parsed = JSON.parse(cleaned);
 
     if (!parsed.topic) throw new Error();
 
     return parsed;
-  } catch {
+
+  } catch (err) {
+    console.error("DECIDE_ERROR:", err);
+
     return {
       topic: "ficha",
       models: ["t5"]
