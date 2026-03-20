@@ -1,5 +1,7 @@
+// /api/chat.js
+
 import executeNormal from "./execute.normal.js";
-import { callLLM } from "../services/llm/callLLM.js";
+import { decide } from "../services/llm/decide.js";
 
 let history = [];
 
@@ -30,13 +32,18 @@ export default async function handler(req, res) {
       });
     }
 
-    await executeNormal({
+    // 1. decidir dinámicamente
+    const decision = await decide(message);
+
+    // 2. ejecutar backend real
+    const execResponse = await executeNormal({
       trace_id: `trace_${Date.now()}`,
-      topic: "cliente",
-      models: ["t5"],
+      topic: decision.topic,
+      models: decision.models,
     });
 
-    const content = await callLLM("Responde solo: ok");
+    // 3. por ahora devolvemos JSON (validar flujo)
+    const content = JSON.stringify(execResponse.data);
 
     history.push({
       role: "user",
