@@ -1,7 +1,7 @@
 // /api/chat.js
 
 import executeNormal from "./execute.normal.js";
-import { decide } from "../services/llm/decide.js";
+import { decide } from "./decide.js";
 import { render } from "../services/llm/render.js";
 
 let history = [];
