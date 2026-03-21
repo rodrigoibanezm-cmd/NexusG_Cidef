@@ -27,7 +27,6 @@ function postFormat(raw) {
     .trim();
 
   const isFicha = firstLine === "MODE:FICHA";
-
   const hasMode = firstLine.startsWith("MODE:");
 
   const body = hasMode
@@ -75,12 +74,24 @@ Primera línea EXACTA:
 MODE: FICHA
 
 Luego:
-- Título
-- Secciones
-- Bullets
+- Usa encabezados markdown reales (##, ###)
+- Cada sección con su propio encabezado
+- Luego bullets debajo
+- NO escribir "Secciones:" ni "Bullets:"
 - SIN interpretación
 - SIN prosa
 - SOLO datos
+
+Ejemplo de formato:
+
+## MAGE
+
+### Motor
+- dato
+- dato
+
+### Dimensiones
+- dato
 
 =========================
 MODO INTERPRETACION
