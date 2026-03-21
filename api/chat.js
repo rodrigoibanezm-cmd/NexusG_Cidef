@@ -34,27 +34,38 @@ export default async function handler(req, res) {
     }
 
     // =========================
-    // 1. DECIDE (LLM)
+    // 1. DECIDE
     // =========================
     const decision = await decide(message);
 
-    // fallback duro (seguridad)
-    const topic = decision?.topic || "ficha";
+    const topics = Array.isArray(decision?.topics) && decision.topics.length
+      ? decision.topics
+      : ["ficha"];
+
     const models = Array.isArray(decision?.models) && decision.models.length
       ? decision.models
       : ["mage"];
 
     // =========================
-    // 2. EXECUTE (backend real)
+    // 2. EXECUTE
     // =========================
     const execResponse = await executeNormal({
       trace_id: `trace_${Date.now()}`,
-      topic,
+      topic: topics[0],
       models,
     });
 
+    // 🔥 VALIDACIÓN (nuevo)
+    if (!execResponse || !execResponse.data) {
+      return res.status(200).json({
+        sessionId: "test-session",
+        messages: history,
+        error: "backend_error",
+      });
+    }
+
     // =========================
-    // 3. RENDER (LLM)
+    // 3. RENDER
     // =========================
     const content = await render(execResponse.data, message);
 
