@@ -14,7 +14,18 @@ const RESOLVER_KEYS = {
 };
 
 /* =========================
-   Normalizador (SE MANTIENE)
+   Prefijos reales por topic
+   ========================= */
+
+const TOPIC_PREFIX = {
+  ficha: "cidef:fichas:v1",
+  comercial: "cidef:comercial:v1",
+  cliente: "cidef:clientes:v1",
+  mitos: "cidef:mitos:v1",
+};
+
+/* =========================
+   Normalizador
    ========================= */
 
 function normalizeModel(label) {
@@ -28,22 +39,24 @@ function normalizeModel(label) {
 }
 
 /* =========================
-   Execute Normal (refactor)
+   Execute Normal (final)
    ========================= */
 
 export default async function executeNormal(body) {
   const { trace_id = null, topic, models = [] } = body || {};
 
-  // Validación básica
+  // Validación
   if (!topic || !RESOLVER_KEYS[topic] || !Array.isArray(models)) {
     return { error: "INVALID_INPUT" };
   }
 
-  // Cargar resolver desde KV
+  // Resolver + prefijo
   const resolverKey = RESOLVER_KEYS[topic];
+  const basePrefix = TOPIC_PREFIX[topic];
+
   const resolver = await kv.get(resolverKey);
 
-  // Caso mitos sin models → traer todos los del resolver
+  // Caso especial mitos
   const targets =
     topic === "mitos" && models.length === 0
       ? Object.keys(resolver || {})
@@ -60,8 +73,7 @@ export default async function executeNormal(body) {
       const resolved = resolver[canonical];
 
       if (resolved) {
-        // Construcción dinámica de la key final
-        const kvKey = `cidef:${topic}:v1:${resolved}`;
+        const kvKey = `${basePrefix}:${resolved}`;
         payload = await kv.get(kvKey);
       }
     }
