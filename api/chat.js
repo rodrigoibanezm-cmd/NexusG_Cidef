@@ -1,6 +1,7 @@
 // /api/chat.js
 
 import executeNormal from "./execute.normal.js";
+import { decide } from "../services/llm/decide.js";
 import { render } from "../services/llm/render.js";
 
 let history = [];
@@ -32,18 +33,30 @@ export default async function handler(req, res) {
       });
     }
 
-    // 1. decisión (dejamos fija para no romper nada)
-    const decision = { topic: "ficha", models: ["mage"] };
+    // =========================
+    // 1. DECIDE (LLM)
+    // =========================
+    const decision = await decide(message);
 
-    // 2. backend real
+    // fallback duro (seguridad)
+    const topic = decision?.topic || "ficha";
+    const models = Array.isArray(decision?.models) && decision.models.length
+      ? decision.models
+      : ["mage"];
+
+    // =========================
+    // 2. EXECUTE (backend real)
+    // =========================
     const execResponse = await executeNormal({
       trace_id: `trace_${Date.now()}`,
-      topic: decision.topic,
-      models: decision.models,
+      topic,
+      models,
     });
 
-    // 3. render (LLM transforma a lenguaje natural)
-    const content = await render(execResponse.data);
+    // =========================
+    // 3. RENDER (LLM)
+    // =========================
+    const content = await render(execResponse.data, message);
 
     history.push({
       role: "user",
