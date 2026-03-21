@@ -33,9 +33,11 @@ export default async function handler(req, res) {
     }
 
     // =========================
-    // 1. DECIDE (HTTP → MISMO ENDPOINT QUE TU AGENTE)
+    // 1. DECIDE (HTTP interno correcto)
     // =========================
-    const decideRes = await fetch(`${req.headers.origin}/api/decide`, {
+    const baseUrl = `https://${req.headers.host}`;
+
+    const decideRes = await fetch(`${baseUrl}/api/decide`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
