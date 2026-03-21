@@ -1,7 +1,6 @@
 // /api/chat.js
 
 import executeNormal from "./execute.normal.js";
-import decide from "./decide.js";
 import { render } from "../services/llm/render.js";
 
 let history = [];
@@ -34,20 +33,24 @@ export default async function handler(req, res) {
     }
 
     // =========================
-    // 1. DECIDE
+    // 1. DECIDE (HTTP → MISMO ENDPOINT QUE TU AGENTE)
     // =========================
-    const decision = await decide(message);
+    const decideRes = await fetch(`${req.headers.origin}/api/decide`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message }),
+    });
 
-    const topics = Array.isArray(decision?.topics) && decision.topics.length
-      ? decision.topics
-      : ["ficha"];
+    const decision = await decideRes.json();
 
+    const topics = decision?.topic ? [decision.topic] : ["ficha"];
     const models = Array.isArray(decision?.models) ? decision.models : [];
 
     // =========================
-    // 2. EXECUTE (MULTI-CAPA REAL)
+    // 2. EXECUTE
     // =========================
-
     let allData = [];
 
     for (const topic of topics) {
@@ -62,7 +65,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🔥 validación
     if (!allData.length) {
       return res.status(200).json({
         sessionId: "test-session",
