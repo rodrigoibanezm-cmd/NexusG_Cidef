@@ -42,7 +42,7 @@ export default async function handler(req, res) {
       ? decision.topics
       : ["ficha"];
 
-    const models = ["mage"]; // 🔒 mantenemos controlado
+    const models = []; // 🔒 mantenemos controlado
 
     // =========================
     // 2. EXECUTE (MULTI-CAPA REAL)
