@@ -3,77 +3,50 @@
 import { callLLM } from "./callLLM.js";
 
 /* =========================
-   Compactación inteligente
-   ========================= */
-
-function compactDataSafe(data) {
-  try {
-    const keys = [
-      "motor",
-      "potencia",
-      "torque",
-      "transmision",
-      "traccion",
-      "dimension",
-      "maletero",
-      "version",
-    ];
-
-    const reduced = (data || []).map((d) => ({
-      modelo: d.modelo,
-      payload: d.payload
-        ? Object.fromEntries(
-            Object.entries(d.payload).filter(([k]) =>
-              keys.some((x) => k.toLowerCase().includes(x))
-            )
-          )
-        : null,
-    }));
-
-    const s = JSON.stringify(reduced);
-    return s.length > 4000 ? s.slice(0, 4000) : s;
-  } catch {
-    return "[]";
-  }
-}
-
-/* =========================
-   Post-procesado
+   Post-procesado mínimo
    ========================= */
 
 function postFormat(raw) {
-  if (!raw) return { intent: "interpretacion", content: "No hay información disponible." };
+  if (!raw) {
+    return "No hay información disponible.";
+  }
 
   const cleaned = raw
     .replace(/```json/g, "")
     .replace(/```/g, "")
     .trim();
 
-  const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
-  let intent = "interpretacion";
+  const firstLine = (lines[0] || "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .trim();
 
-  if (lines[0] === "MODE: FICHA") intent = "ficha";
-  if (lines[0] === "MODE: INTERPRETACION") intent = "interpretacion";
+  const isFicha = firstLine === "MODE:FICHA";
 
-  const body = lines.slice(1).join("\n").trim();
+  const hasMode = firstLine.startsWith("MODE:");
 
-  // 👉 FICHA: NO tocar estructura
-  if (intent === "ficha") {
-    return { intent, content: body };
+  const body = hasMode
+    ? lines.slice(1).join("\n").trim()
+    : lines.join("\n").trim();
+
+  // 👉 FICHA: no tocar estructura
+  if (isFicha) {
+    return body;
   }
 
-  // 👉 INTERPRETACIÓN: asegurar bullets cortos
+  // 👉 INTERPRETACIÓN: limitar bullets
   const bullets = body
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.startsWith("-") || l.startsWith("*"))
     .slice(0, 5);
 
-  return {
-    intent,
-    content: bullets.length ? bullets.join("\n") : body,
-  };
+  return bullets.length ? bullets.join("\n") : body;
 }
 
 /* =========================
@@ -82,10 +55,14 @@ function postFormat(raw) {
 
 export async function render(data, message) {
   try {
-    const compactData = compactDataSafe(data);
-
     const prompt = `
-Eres un sistema de respuesta automotriz.
+Eres un sistema de respuesta automotriz de Cidef.
+
+Contexto:
+- "Mage" es un modelo de vehículo.
+- NO es un concepto de fantasía.
+
+Responde en español latino neutro, sin modismos regionales.
 
 Debes responder en UNO de estos modos:
 
@@ -103,6 +80,7 @@ Luego:
 - Bullets
 - SIN interpretación
 - SIN prosa
+- SOLO datos
 
 =========================
 MODO INTERPRETACION
@@ -116,29 +94,35 @@ Luego:
 - Máximo 4-5 bullets
 - Cortos
 - Sin prosa larga
+- Enfocado en valor
 
 =========================
-REGLAS
+REGLAS CRÍTICAS
 =========================
 - NO inventar datos
 - usar SOLO la información entregada
+- NO usar conocimiento externo
+- NO completar con conocimiento general
 - NO mencionar JSON
 - NO mezclar modos
+
+SI no hay información suficiente:
+→ responde EXACTAMENTE:
+No hay información disponible.
 
 Pregunta:
 ${message}
 
-Información:
-${compactData}
+Información (FUENTE ÚNICA):
+${JSON.stringify(data)}
 `;
 
     const out = await callLLM(prompt);
 
-    const { content } = postFormat(out);
+    return postFormat(out);
 
-    return content || "No hay información disponible.";
   } catch (err) {
     console.error("RENDER_ERROR:", err);
-    return "No hay información disponible.";
+    return "Error procesando respuesta.";
   }
 }
