@@ -1,7 +1,7 @@
 // /api/chat.js
 
 import executeNormal from "./execute.normal.js";
-import { decide } from "../services/llm/decide.js";
+import { render } from "../services/llm/render.js";
 
 let history = [];
 
@@ -32,18 +32,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // 1. decidir dinámicamente
+    // 1. decisión (dejamos fija para no romper nada)
     const decision = { topic: "ficha", models: ["mage"] };
 
-    // 2. ejecutar backend real
+    // 2. backend real
     const execResponse = await executeNormal({
       trace_id: `trace_${Date.now()}`,
       topic: decision.topic,
       models: decision.models,
     });
 
-    // 3. por ahora devolvemos JSON (validar flujo)
-    const content = JSON.stringify(execResponse.data);
+    // 3. render (LLM transforma a lenguaje natural)
+    const content = await render(execResponse.data);
 
     history.push({
       role: "user",
