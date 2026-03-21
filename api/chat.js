@@ -42,21 +42,28 @@ export default async function handler(req, res) {
       ? decision.topics
       : ["ficha"];
 
-    const models = Array.isArray(decision?.models) && decision.models.length
-      ? decision.models
-      : ["mage"];
+    const models = ["mage"]; // 🔒 mantenemos controlado
 
     // =========================
-    // 2. EXECUTE
+    // 2. EXECUTE (MULTI-CAPA REAL)
     // =========================
-    const execResponse = await executeNormal({
-      trace_id: `trace_${Date.now()}`,
-      topic: topics[0],
-      models,
-    });
 
-    // 🔥 VALIDACIÓN (nuevo)
-    if (!execResponse || !execResponse.data) {
+    let allData = [];
+
+    for (const topic of topics) {
+      const execResponse = await executeNormal({
+        trace_id: `trace_${Date.now()}_${topic}`,
+        topic,
+        models,
+      });
+
+      if (execResponse && execResponse.data) {
+        allData = allData.concat(execResponse.data);
+      }
+    }
+
+    // 🔥 validación
+    if (!allData.length) {
       return res.status(200).json({
         sessionId: "test-session",
         messages: history,
@@ -67,7 +74,7 @@ export default async function handler(req, res) {
     // =========================
     // 3. RENDER
     // =========================
-    const content = await render(execResponse.data, message);
+    const content = await render(allData, message);
 
     history.push({
       role: "user",
@@ -86,6 +93,7 @@ export default async function handler(req, res) {
       messages: history,
       error: null,
     });
+
   } catch (err) {
     console.error("CHAT_ERROR:", err);
 
