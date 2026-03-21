@@ -42,7 +42,7 @@ export default async function handler(req, res) {
       ? decision.topics
       : ["ficha"];
 
-    const models = []; // 🔒 mantenemos controlado
+    const models = Array.isArray(decision?.models) ? decision.models : [];
 
     // =========================
     // 2. EXECUTE (MULTI-CAPA REAL)
