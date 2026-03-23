@@ -1,7 +1,10 @@
 // /services/llm/callLLM.js
 
-export async function callLLM(prompt) {
+export async function callLLM(messages) {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -10,22 +13,87 @@ export async function callLLM(prompt) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [
+        messages,
+        temperature: 0.2,
+        tools: [
           {
-            role: "user",
-            content: prompt,
+            type: "function",
+            function: {
+              name: "decideMaps",
+              description:
+                "Solicita mapas disponibles (cliente, comercial, ficha, mitos)",
+              parameters: {
+                type: "object",
+                required: ["requested_maps"],
+                properties: {
+                  requested_maps: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                      enum: ["cliente", "comercial", "ficha", "mitos"],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "executePayload",
+              description:
+                "Solicita datos completos según topic y models",
+              parameters: {
+                type: "object",
+                required: ["topic", "models"],
+                properties: {
+                  topic: {
+                    type: "string",
+                    enum: ["cliente", "comercial", "ficha", "mitos"],
+                  },
+                  models: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
           },
         ],
-        temperature: 0.2,
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.error("LLM_HTTP_ERROR:", res.status);
+      return null;
+    }
 
     const data = await res.json();
 
-    return data?.choices?.[0]?.message?.content || "";
+    const message = data?.choices?.[0]?.message;
+
+    if (!message) {
+      console.error("LLM_EMPTY_MESSAGE:", data);
+      return null;
+    }
+
+    // validación mínima crítica
+    if (!message.content && !message.tool_calls) {
+      console.error("LLM_INVALID_OUTPUT:", message);
+      return null;
+    }
+
+    return message;
 
   } catch (err) {
-    console.error("LLM_ERROR:", err);
-    return "";
+    if (err.name === "AbortError") {
+      console.error("LLM_TIMEOUT");
+    } else {
+      console.error("LLM_ERROR:", err);
+    }
+    return null;
   }
 }
