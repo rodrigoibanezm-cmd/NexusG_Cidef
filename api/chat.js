@@ -46,16 +46,8 @@ export default async function handler(req, res) {
 
       messages.push(llmResponse);
 
-      // 🔥 ENFORCEMENT: no permitir respuesta sin pasar por backend cuando corresponde
-      const hasToolExecution = messages.some(m => m.role === "tool");
-
+      // respuesta final
       if (!llmResponse.tool_calls || llmResponse.tool_calls.length === 0) {
-        if (!hasToolExecution) {
-          return res.status(200).json({
-            message: "Error de flujo: falta ejecución de backend",
-          });
-        }
-
         return res.status(200).json({
           message: llmResponse.content || "No hay información disponible.",
         });
@@ -63,13 +55,18 @@ export default async function handler(req, res) {
 
       // ejecutar tools
       for (const toolCall of llmResponse.tool_calls) {
-        const { name, arguments: argsString } = toolCall.function;
+        // 🔥 FIX REAL: soportar ambos formatos de OpenAI
+        const name = toolCall.function?.name || toolCall.name;
+        const argsString =
+          toolCall.function?.arguments || toolCall.arguments;
 
         let args = {};
         try {
           args = JSON.parse(argsString || "{}");
         } catch {
-          return res.status(200).json({ message: "Error en formato de tools" });
+          return res.status(200).json({
+            message: "Error en formato de tools",
+          });
         }
 
         let result;
