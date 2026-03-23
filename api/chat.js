@@ -1,112 +1,38 @@
-// /api/chat.js
+/api/chat.js
 
-import { callLLM } from "../services/llm/callLLM.js";
-import { systemPrompt } from "../services/llm/systemPrompt.js";
-import { runTool } from "../services/tools/runTool.js";
+import { runAgent } from "../core/engine.js";
+import { systemPrompt } from "../services/systemPrompt.js";
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+try {
+if (req.method !== "POST") {
+return res.status(405).json({ error: "method_not_allowed" });
+}
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+```
+const { message } = req.body || {};
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "method_not_allowed" });
-  }
+if (!message) {
+  return res.status(400).json({ error: "validation_error" });
+}
 
-  const { message } = req.body || {};
-  if (!message) {
-    return res.status(400).json({ error: "validation_error" });
-  }
+const result = await runAgent({
+  message,
+  req,
+  systemPrompt,
+});
 
-  try {
-    const protocol = req.headers["x-forwarded-proto"] || "https";
-    const baseUrl = `${protocol}://${req.headers.host}`;
+return res.status(200).json(result);
+```
 
-    let messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: message },
-    ];
+} catch (err) {
+console.error("CHAT_ERROR:", err);
 
-    let steps = 0;
+```
+return res.status(200).json({
+  message: err.message || "Error interno",
+});
+```
 
-    while (steps++ < 10) {
-      const llmResponse = await callLLM(messages);
-      if (!llmResponse) {
-        return res.status(200).json({
-          message: "No hay información disponible",
-        });
-      }
-
-      messages.push(llmResponse);
-
-      // 🔹 Determina si hay respuesta final válida
-      const hasContent =
-        llmResponse.content && llmResponse.content.trim() !== "";
-      const hasTools =
-        llmResponse.tool_calls && llmResponse.tool_calls.length > 0;
-
-      if (!hasTools && hasContent) {
-        return res.status(200).json({
-          message: llmResponse.content,
-        });
-      }
-
-      if (!hasTools && !hasContent) {
-        return res.status(200).json({
-          message: "No hay información disponible",
-        });
-      }
-
-      // ejecutar tools
-      for (const toolCall of llmResponse.tool_calls) {
-        // Soporta ambos formatos de OpenAI
-        const name = toolCall.function?.name || toolCall.name;
-        const argsString =
-          toolCall.function?.arguments || toolCall.arguments;
-
-        let args = {};
-        try {
-          args = JSON.parse(argsString || "{}");
-        } catch {
-          return res.status(200).json({
-            message: "Error en formato de tools",
-          });
-        }
-
-        let result;
-        try {
-          result = await runTool({
-            name,
-            args,
-            baseUrl,
-          });
-        } catch (err) {
-          console.error("TOOL_ERROR:", err.message);
-          return res.status(200).json({
-            message: err.message || "Error en ejecución de backend",
-          });
-        }
-
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result),
-        });
-      }
-    }
-
-    return res.status(200).json({
-      message: "Error: límite de iteraciones alcanzado",
-    });
-  } catch (err) {
-    console.error("CHAT_ERROR:", err);
-    return res.status(200).json({
-      message: "Error interno del sistema",
-    });
-  }
+}
 }
