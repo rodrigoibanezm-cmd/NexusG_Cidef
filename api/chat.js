@@ -1,11 +1,11 @@
 // /api/chat.js
 
 import { callLLM } from "../services/llm/callLLM.js";
+import { systemPrompt } from "../services/llm/systemPrompt.js";
+import { runTool } from "../services/tools/runTool.js";
 
 export default async function handler(req, res) {
-  // =========================
   // CORS
-  // =========================
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -29,76 +29,8 @@ export default async function handler(req, res) {
     const baseUrl = `${protocol}://${req.headers.host}`;
 
     let messages = [
-      {
-        role: "system",
-        content: `
-Sigue estrictamente:
-- instrucciones.md
-- decide.md
-- execute.md
-- contrato de verdad
-
-=========================
-FORMATO DE RESPUESTA
-=========================
-
-1. Si es información factual (ficha, specs):
-- usar encabezados markdown (##, ###)
-- cada sección con bullets
-- sin interpretación
-- sin prosa
-
-2. Si es interpretación (recomendación, uso, cliente ideal):
-- máximo 5 bullets
-- bullets cortos
-- directo a valor
-- sin prosa larga
-
-- Elige el modo según la intención principal del usuario.
-- elegir SOLO un modo (ficha o interpretación)
-- NO mezclar ambos en la misma respuesta
-
-=========================
-USO DE TOOLS (OBLIGATORIO)
-=========================
-
-- Si la respuesta requiere datos del negocio → SIEMPRE usar tools
-- Nunca responder sin backend si hay datos verificables
-- Si hay un objeto de dominio (modelo, producto, categoría) → backend obligatorio
-
-SECUENCIA:
-
-1. decideMaps si necesitas conocer qué datos existen
-2. analizar los mapas recibidos
-3. executePayload si necesitas datos completos
-4. responder SOLO con esa información
-
-PROHIBIDO:
-
-- responder sin usar tools cuando se requieren datos
-- saltarse decideMaps si no tienes contexto
-- usar conocimiento previo
-- inventar o completar información
-
-- Si ningún mapa aplica → no llamar a executePayload
-- Si todos los datos devueltos son null → responder exactamente:
-  "No hay información disponible."
-
-=========================
-REGLAS CRÍTICAS
-=========================
-
-- usar SOLO datos del backend
-- NO inventar
-- NO usar conocimiento externo
-- NO completar vacíos
-- NO mencionar JSON ni backend
-`,
-      },
-      {
-        role: "user",
-        content: message,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message },
     ];
 
     let steps = 0;
@@ -123,10 +55,6 @@ REGLAS CRÍTICAS
       for (const toolCall of llmResponse.tool_calls) {
         const { name, arguments: argsString } = toolCall.function;
 
-        if (!["decideMaps", "executePayload"].includes(name)) {
-          return res.status(500).json({ error: "unknown_tool" });
-        }
-
         let args = {};
         try {
           args = JSON.parse(argsString || "{}");
@@ -134,45 +62,16 @@ REGLAS CRÍTICAS
           return res.status(500).json({ error: "invalid_tool_args" });
         }
 
-        let toolResult = null;
-
-        if (name === "decideMaps") {
-          const r = await fetch(`${baseUrl}/api/decide`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              requested_maps: args.requested_maps || [],
-            }),
-          });
-
-          if (!r.ok) {
-            return res.status(500).json({ error: "decide_http_error" });
-          }
-
-          toolResult = await r.json();
-        }
-
-        if (name === "executePayload") {
-          const r = await fetch(`${baseUrl}/api/execute`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              topic: args.topic,
-              models: args.models || [],
-            }),
-          });
-
-          if (!r.ok) {
-            return res.status(500).json({ error: "execute_http_error" });
-          }
-
-          toolResult = await r.json();
-        }
+        const result = await runTool({
+          name,
+          args,
+          baseUrl,
+        });
 
         messages.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: JSON.stringify(toolResult),
+          content: JSON.stringify(result),
         });
       }
     }
