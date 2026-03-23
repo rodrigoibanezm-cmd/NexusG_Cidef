@@ -68,13 +68,13 @@ export async function callLLM(messages) {
 
     if (!res.ok) {
       console.error("LLM_HTTP_ERROR:", res.status);
-      return { content: "Error al procesar la solicitud" };
+      return { content: "Error al procesar la solicitud", tool_calls: [] };
     }
 
     const data = await res.json();
     const message = data?.choices?.[0]?.message;
 
-    // 🔹 FIX CRÍTICO: nunca devolver null
+    // 🔹 Nunca devolver null
     if (!message || (!message.content && !message.tool_calls)) {
       console.error("LLM_INVALID_OUTPUT:", data);
       return { content: "No hay información disponible", tool_calls: [] };
@@ -89,6 +89,6 @@ export async function callLLM(messages) {
       console.error("LLM_ERROR:", err);
     }
 
-    return { content: "Error al procesar la solicitud", tool_calls: [] };
+    return { content: "No hay información disponible", tool_calls: [] };
   }
 }
