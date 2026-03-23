@@ -62,11 +62,21 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: "invalid_tool_args" });
         }
 
-        const result = await runTool({
-          name,
-          args,
-          baseUrl,
-        });
+        let result;
+
+        try {
+          result = await runTool({
+            name,
+            args,
+            baseUrl,
+          });
+        } catch (err) {
+          console.error("TOOL_ERROR:", err.message);
+
+          return res.status(500).json({
+            error: err.message || "tool_error",
+          });
+        }
 
         messages.push({
           role: "tool",
