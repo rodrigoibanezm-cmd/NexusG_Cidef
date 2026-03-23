@@ -19,7 +19,6 @@ export default async function handler(req, res) {
   }
 
   const { message } = req.body || {};
-
   if (!message) {
     return res.status(400).json({ error: "validation_error" });
   }
@@ -46,16 +45,27 @@ export default async function handler(req, res) {
 
       messages.push(llmResponse);
 
-      // respuesta final
-      if (!llmResponse.tool_calls || llmResponse.tool_calls.length === 0) {
+      // 🔹 Determina si ya hay respuesta final válida
+      const hasContent =
+        llmResponse.content && llmResponse.content.trim() !== "";
+      const hasTools =
+        llmResponse.tool_calls && llmResponse.tool_calls.length > 0;
+
+      if (!hasTools && hasContent) {
         return res.status(200).json({
-          message: llmResponse.content || "No hay información disponible.",
+          message: llmResponse.content,
+        });
+      }
+
+      if (!hasTools && !hasContent) {
+        return res.status(200).json({
+          message: "No hay información disponible",
         });
       }
 
       // ejecutar tools
       for (const toolCall of llmResponse.tool_calls) {
-        // 🔥 FIX REAL: soportar ambos formatos de OpenAI
+        // 🔹 FIX REAL: soporta ambos formatos de OpenAI
         const name = toolCall.function?.name || toolCall.name;
         const argsString =
           toolCall.function?.arguments || toolCall.arguments;
@@ -70,7 +80,6 @@ export default async function handler(req, res) {
         }
 
         let result;
-
         try {
           result = await runTool({
             name,
@@ -79,7 +88,6 @@ export default async function handler(req, res) {
           });
         } catch (err) {
           console.error("TOOL_ERROR:", err.message);
-
           return res.status(200).json({
             message: err.message || "Error en ejecución de backend",
           });
@@ -96,10 +104,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       message: "Error: límite de iteraciones alcanzado",
     });
-
   } catch (err) {
     console.error("CHAT_ERROR:", err);
-
     return res.status(200).json({
       message: "Error interno del sistema",
     });
