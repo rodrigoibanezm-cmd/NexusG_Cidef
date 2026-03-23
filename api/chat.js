@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       // respuesta final
       if (!llmResponse.tool_calls || llmResponse.tool_calls.length === 0) {
         return res.status(200).json({
-          message: llmResponse.content || "",
+          message: llmResponse.content || "No hay información disponible.",
         });
       }
 
