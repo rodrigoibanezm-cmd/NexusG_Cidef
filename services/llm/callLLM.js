@@ -79,10 +79,8 @@ export async function callLLM(messages) {
       return { content: "Error al procesar la solicitud" };
     }
 
-    if (!message.content && !message.tool_calls) {
-      console.error("LLM_INVALID_OUTPUT:", message);
-      return { content: "Error al procesar la solicitud" };
-    }
+    // ✅ IMPORTANTE: NO validar content/tool_calls aquí
+    // el loop maneja eso
 
     return message;
 
