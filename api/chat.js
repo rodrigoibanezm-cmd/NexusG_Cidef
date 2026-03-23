@@ -36,16 +36,15 @@ export default async function handler(req, res) {
 
     while (steps++ < 10) {
       const llmResponse = await callLLM(messages);
-
       if (!llmResponse) {
         return res.status(200).json({
-          message: "Error al procesar la solicitud",
+          message: "No hay información disponible",
         });
       }
 
       messages.push(llmResponse);
 
-      // 🔹 Determina si ya hay respuesta final válida
+      // 🔹 Determina si hay respuesta final válida
       const hasContent =
         llmResponse.content && llmResponse.content.trim() !== "";
       const hasTools =
@@ -65,7 +64,7 @@ export default async function handler(req, res) {
 
       // ejecutar tools
       for (const toolCall of llmResponse.tool_calls) {
-        // 🔹 FIX REAL: soporta ambos formatos de OpenAI
+        // Soporta ambos formatos de OpenAI
         const name = toolCall.function?.name || toolCall.name;
         const argsString =
           toolCall.function?.arguments || toolCall.arguments;
