@@ -4,7 +4,7 @@ import { createContext } from "./context.js";
 import { callLLM } from "../services/llm.js";
 import { runTool } from "../services/tools.js";
 
-export async function runAgent({ message, req, systemPrompt }) {
+export async function runAgent({ message, req, systemPrompt, trace }) {
 const context = createContext({ message, systemPrompt });
 
 const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -25,7 +25,8 @@ context.messages.push(llmResponse);
 const toolCalls = llmResponse.tool_calls || [];
 const hasTools = toolCalls.length > 0;
 const content = llmResponse.content;
-const hasContent = content && content.trim() !== "";
+const hasContent =
+  typeof content === "string" && content.trim() !== "";
 
 // =========================
 // STATE: START
@@ -40,6 +41,7 @@ if (context.state === "START") {
   }
 
   const name = toolCalls[0].function?.name || toolCalls[0].name;
+
   if (name !== "decideMaps") {
     throw new Error("Invalid transition: START → " + name);
   }
@@ -85,7 +87,10 @@ if (hasTools) {
   // -------- EXECUTE TOOL --------
   const result = await runTool({
     name,
-    args,
+    args: {
+      ...args,
+      trace_id: trace?.trace_id, // 🔥 FIX: alineado con schema
+    },
     baseUrl,
   });
 
@@ -97,13 +102,22 @@ if (hasTools) {
 
   context.lastTool = name;
 
-  // -------- TRANSICIÓN DE ESTADO --------
+  // =========================
+  // TRANSICIONES
+  // =========================
+
   if (name === "decideMaps") {
     context.state = "DECIDE_DONE";
 
-    const models = result?.models || [];
-    context.mustExecute =
-      Array.isArray(models) && models.length > 0;
+    // 🔥 FIX: derivar desde maps (no models)
+    const maps = result?.maps || {};
+
+    const hasData =
+      maps &&
+      typeof maps === "object" &&
+      Object.keys(maps).length > 0;
+
+    context.mustExecute = hasData;
   }
 
   if (name === "executePayload") {
@@ -117,9 +131,8 @@ if (hasTools) {
 // STATE: DECIDE_DONE
 // =========================
 if (context.state === "DECIDE_DONE") {
-  // 🔥 FIX: validar cierre temprano correctamente
   if (context.mustExecute) {
-    throw new Error("Missing executePayload when models exist");
+    throw new Error("Missing executePayload when maps contain data");
   }
 
   if (hasContent) {
