@@ -1,6 +1,6 @@
 // /api/chat.js
 
-import { systemPrompt } from "../core/systemPrompt.js";
+import { systemPrompt } from "../services/llm/systemPrompt.js";
 import { runRuntime } from "../core/chat/runtime.js";
 
 import {
