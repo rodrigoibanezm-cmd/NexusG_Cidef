@@ -1,94 +1,103 @@
-// /services/llm/callLLM.js
+/services/llm/callLLM.js
 
 export async function callLLM(messages) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 5000);
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-        temperature: 0.2,
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "decideMaps",
-              description:
-                "Solicita mapas disponibles (cliente, comercial, ficha, mitos)",
-              parameters: {
-                type: "object",
-                required: ["requested_maps"],
-                properties: {
-                  requested_maps: {
-                    type: "array",
-                    items: {
-                      type: "string",
-                      enum: ["cliente", "comercial", "ficha", "mitos"],
-                    },
-                  },
-                },
-              },
-            },
-          },
-          {
-            type: "function",
-            function: {
-              name: "executePayload",
-              description:
-                "Solicita datos completos según topic y models",
-              parameters: {
-                type: "object",
-                required: ["topic", "models"],
-                properties: {
-                  topic: {
-                    type: "string",
-                    enum: ["cliente", "comercial", "ficha", "mitos"],
-                  },
-                  models: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                },
-              },
-            },
-          },
-        ],
-      }),
-      signal: controller.signal,
-    });
+try {
+const res = await fetch("https://api.openai.com/v1/chat/completions", {
+method: "POST",
+headers: {
+"Content-Type": "application/json",
+Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+},
+body: JSON.stringify({
+model: "gpt-4o-mini",
+messages,
+temperature: 0.2,
+tools: [
+{
+type: "function",
+function: {
+name: "decideMaps",
+parameters: {
+type: "object",
+required: ["requested_maps"],
+properties: {
+requested_maps: {
+type: "array",
+items: {
+type: "string",
+enum: ["cliente", "comercial", "ficha", "mitos"],
+},
+},
+},
+},
+},
+},
+{
+type: "function",
+function: {
+name: "executePayload",
+parameters: {
+type: "object",
+required: ["topic", "models"],
+properties: {
+topic: {
+type: "string",
+enum: ["cliente", "comercial", "ficha", "mitos"],
+},
+models: {
+type: "array",
+items: { type: "string" },
+},
+},
+},
+},
+},
+],
+}),
+signal: controller.signal,
+});
 
-    clearTimeout(timeout);
+```
+if (!res.ok) {
+  throw new Error(`LLM HTTP error: ${res.status}`);
+}
 
-    if (!res.ok) {
-      console.error("LLM_HTTP_ERROR:", res.status);
-      return { content: "Error al procesar la solicitud", tool_calls: [] };
-    }
+let data;
+try {
+  data = await res.json();
+} catch {
+  throw new Error("Invalid JSON from LLM");
+}
 
-    const data = await res.json();
-    const message = data?.choices?.[0]?.message;
+const message = data?.choices?.[0]?.message;
 
-    // 🔹 Nunca devolver null
-    if (!message || (!message.content && !message.tool_calls)) {
-      console.error("LLM_INVALID_OUTPUT:", data);
-      return { content: "No hay información disponible", tool_calls: [] };
-    }
+// 🔒 contrato: devolver message válido o null
+if (!message) {
+  return null;
+}
 
-    return message;
+// 🔒 normalización mínima segura
+return {
+  content: message.content ?? "",
+  tool_calls: Array.isArray(message.tool_calls)
+    ? message.tool_calls
+    : [],
+};
+```
 
-  } catch (err) {
-    if (err.name === "AbortError") {
-      console.error("LLM_TIMEOUT");
-    } else {
-      console.error("LLM_ERROR:", err);
-    }
+} catch (err) {
+if (err.name === "AbortError") {
+throw new Error("LLM timeout");
+}
 
-    return { content: "No hay información disponible", tool_calls: [] };
-  }
+```
+throw new Error(`LLM error: ${err.message}`);
+```
+
+} finally {
+clearTimeout(timeout);
+}
 }
