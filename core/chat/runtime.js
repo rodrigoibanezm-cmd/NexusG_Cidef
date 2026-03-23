@@ -1,5 +1,3 @@
-// /core/chat/runtime.js
-
 import {
   addLLMRequest,
   addLLMResponse,
@@ -9,10 +7,10 @@ import {
   incrementIteration,
   setOutput,
   setError,
-} from "@/core/trace";
+} from "../trace.js";
 
-import { callLLM } from "@/core/llm";
-import { runTool } from "@/core/tools";
+import { callLLM } from "../../services/llm/callLLM.js";
+import { runTool } from "../../services/tools.js";
 
 export async function runRuntime({ messages, trace, baseUrl }) {
   let state = "START";
@@ -23,9 +21,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
   while (steps++ < 8) {
     incrementIteration(trace);
 
-    // =========================
-    // LLM CALL
-    // =========================
     addLLMRequest(trace, messages);
 
     let llmResponse;
@@ -40,7 +35,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
 
     if (!llmResponse) {
       const message = "No hay información disponible";
-      setOutput(trace, { message, source: "fallback" });
+      setOutput(trace, { message });
       return { message };
     }
 
@@ -52,24 +47,15 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       typeof llmResponse.content === "string" &&
       llmResponse.content.trim() !== "";
 
-    // =========================
-    // VALIDACIÓN START
-    // =========================
+    // START → debe llamar decideMaps
     if (state === "START") {
       if (!hasTools) {
-        setError(trace, new Error("START must call decideMaps"), {
-          reason: "invalid_start_no_tool",
-        });
         return { message: "Error: flujo inválido" };
       }
 
       const name = toolCalls[0]?.function?.name || toolCalls[0]?.name;
 
       if (name !== "decideMaps") {
-        setError(trace, new Error("Invalid first tool"), {
-          reason: "invalid_first_tool",
-          tool: name,
-        });
         return { message: "Error: flujo inválido" };
       }
 
@@ -77,21 +63,15 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       setState(trace, state);
     }
 
-    // =========================
-    // TOOL EXECUTION
-    // =========================
+    // TOOL
     if (hasTools) {
       if (toolCalls.length !== 1) {
-        setError(trace, new Error("Multiple tool calls"), {
-          reason: "multiple_tool_calls",
-        });
         return { message: "Error en tools" };
       }
 
       const toolCall = toolCalls[0];
       const name = toolCall.function?.name || toolCall.name;
 
-      // VALIDAR ORDEN
       if (state === "DECIDE" && name !== "decideMaps") {
         return { message: "Error: flujo inválido" };
       }
@@ -104,17 +84,12 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         return { message: "Error: flujo inválido" };
       }
 
-      // PARSE ARGS
       let args = {};
       try {
         const raw =
           toolCall.function?.arguments || toolCall.arguments || "{}";
         args = JSON.parse(raw);
-      } catch (error) {
-        setError(trace, error, {
-          reason: "invalid_tool_args",
-          tool: name,
-        });
+      } catch {
         return { message: "Error en tools" };
       }
 
@@ -125,7 +100,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         state,
       });
 
-      // EXECUTE
       let result;
       try {
         result = await runTool({
@@ -137,10 +111,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           baseUrl,
         });
       } catch (error) {
-        setError(trace, error, {
-          reason: "tool_execution_failed",
-          tool: name,
-        });
+        setError(trace, error, { reason: "tool_execution_failed" });
         return { message: "Error en backend" };
       }
 
@@ -157,7 +128,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // TRANSICIONES
       if (name === "decideMaps") {
         state = "DECIDE_DONE";
         setState(trace, state);
@@ -171,35 +141,17 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       continue;
     }
 
-    // =========================
     // RESPUESTA FINAL
-    // =========================
     if (hasContent) {
       setOutput(trace, {
         message: llmResponse.content,
-        source: "llm",
       });
 
       return { message: llmResponse.content };
     }
 
-    // fallback duro
-    const message = "No hay información disponible";
-
-    setOutput(trace, {
-      message,
-      source: "fallback",
-    });
-
-    return { message };
+    return { message: "No hay información disponible" };
   }
 
-  const message = "Error: límite de iteraciones alcanzado";
-
-  setOutput(trace, {
-    message,
-    source: "guardrail",
-  });
-
-  return { message };
+  return { message: "Error: límite de iteraciones alcanzado" };
 }
