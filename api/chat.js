@@ -39,7 +39,9 @@ export default async function handler(req, res) {
       const llmResponse = await callLLM(messages);
 
       if (!llmResponse) {
-        return res.status(500).json({ error: "llm_error" });
+      return res.status(200).json({
+      message: "Error al procesar la solicitud",
+          });
       }
 
       messages.push(llmResponse);
