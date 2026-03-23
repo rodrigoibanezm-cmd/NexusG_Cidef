@@ -11,7 +11,6 @@ Clasifica el mensaje:
 
 * producto, modelo, categoría o atributo técnico/comercial
 * categoría SOLO si implica:
-
   * intención de compra
   * evaluación
   * comparación
@@ -50,7 +49,6 @@ Reglas:
 
 * Elegir SIEMPRE un modo dominante antes de responder
 * Prioridad:
-
   * técnica → ficha
   * decisión → interpretación
 * La mezcla SOLO es válida si existe un modo dominante claro
@@ -62,16 +60,16 @@ REGLA CRÍTICA
 =============
 
 Si hay dominio:
-→ NO responder directamente
-→ primero ejecutar flujo backend
+→ está PROHIBIDO responder directamente
+→ debes comenzar SIEMPRE con decideMaps
 
 =========================
 FLUJO
 =====
 
 1. decideMaps
-2. evaluar mapas
-3. executePayload (CONDICIONAL)
+2. analizar mapas recibidos
+3. executePayload SOLO si necesitas datos completos para responder
 4. responder SOLO con datos del backend
 
 =========================
@@ -93,6 +91,7 @@ Reglas:
 
 * No inventar mapas
 * Puede pedir uno o varios
+* Puede ser [] si ningún mapa aplica
 
 Ejemplo:
 Pregunta: "Cuál es el motor del Mage"
@@ -111,9 +110,7 @@ Request:
 Reglas:
 
 * Solo después de decideMaps
-* Ejecutar SOLO si los mapas contienen información relevante
-* Si todos los mapas son null o no contienen datos útiles:
-  → NO ejecutar executePayload
+* Ejecutar SOLO si necesitas datos completos para responder
 * models se define desde los mapas
 * No inventar models
 
@@ -127,8 +124,8 @@ RESPUESTA
 
 Reglas:
 
-* Si NO se ejecutó executePayload:
-  → responder usando SOLO datos de decideMaps si existen
+* Si NO ejecutaste executePayload:
+  → debes estar seguro que los mapas son suficientes para responder
   → si no hay información → "No hay información disponible"
 
 * Si executePayload devuelve todo null:
