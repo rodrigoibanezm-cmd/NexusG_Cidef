@@ -5,7 +5,6 @@ import {
   addLLMResponse,
   addToolCall,
   addToolResult,
-  addDecision,
   setState,
   incrementIteration,
   setOutput,
@@ -24,19 +23,24 @@ export async function runRuntime({ messages, trace, baseUrl }) {
   while (steps++ < 8) {
     incrementIteration(trace);
 
+    // =========================
+    // LLM CALL
+    // =========================
     addLLMRequest(trace, messages);
-    const llmResponse = await callLLM(messages);
+
+    let llmResponse;
+    try {
+      llmResponse = await callLLM(messages);
+    } catch (error) {
+      setError(trace, error, { reason: "llm_call_failed" });
+      return { message: "Error en LLM" };
+    }
+
     addLLMResponse(trace, llmResponse);
 
     if (!llmResponse) {
       const message = "No hay información disponible";
-
-      setOutput(trace, {
-        message,
-        source: "fallback",
-        reason: "empty_llm_response",
-      });
-
+      setOutput(trace, { message, source: "fallback" });
       return { message };
     }
 
@@ -45,231 +49,149 @@ export async function runRuntime({ messages, trace, baseUrl }) {
     const toolCalls = llmResponse.tool_calls || [];
     const hasTools = toolCalls.length > 0;
     const hasContent =
-      llmResponse.content && llmResponse.content.trim() !== "";
+      typeof llmResponse.content === "string" &&
+      llmResponse.content.trim() !== "";
 
     // =========================
-    // START
+    // VALIDACIÓN START
     // =========================
     if (state === "START") {
-      if (!hasTools && hasContent) {
-        addDecision(trace, {
-          state,
-          decision: "direct_response_from_start",
+      if (!hasTools) {
+        setError(trace, new Error("START must call decideMaps"), {
+          reason: "invalid_start_no_tool",
         });
-
-        const message = llmResponse.content;
-
-        setOutput(trace, {
-          message,
-          source: "llm",
-          reason: "answered_in_start",
-        });
-
-        return { message };
+        return { message: "Error: flujo inválido" };
       }
 
-      if (hasTools) {
-        const firstToolName =
-          toolCalls[0].function?.name || toolCalls[0].name;
+      const name = toolCalls[0]?.function?.name || toolCalls[0]?.name;
 
-        if (firstToolName === "decideMaps") {
-          state = "DECIDE";
-          setState(trace, state, {
-            trigger: "tool_detected",
-            tool: firstToolName,
-          });
-        } else {
-          const message = "Error: flujo inválido (esperado decideMaps)";
-
-          setOutput(trace, {
-            message,
-            source: "guardrail",
-            reason: "invalid_first_tool",
-          });
-
-          return { message };
-        }
+      if (name !== "decideMaps") {
+        setError(trace, new Error("Invalid first tool"), {
+          reason: "invalid_first_tool",
+          tool: name,
+        });
+        return { message: "Error: flujo inválido" };
       }
+
+      state = "DECIDE";
+      setState(trace, state);
     }
 
     // =========================
-    // TOOLS
+    // TOOL EXECUTION
     // =========================
     if (hasTools) {
-      for (const toolCall of toolCalls) {
-        const name = toolCall.function?.name || toolCall.name;
-        const argsString =
-          toolCall.function?.arguments || toolCall.arguments;
-
-        let args = {};
-        try {
-          args = JSON.parse(argsString || "{}");
-        } catch (error) {
-          setError(trace, error, {
-            reason: "invalid_tool_arguments_json",
-            tool: name,
-            raw_arguments: argsString,
-          });
-
-          return { message: "Error en formato de tools" };
-        }
-
-        addToolCall(trace, {
-          name,
-          args,
-          toolCallId: toolCall.id,
-          state,
+      if (toolCalls.length !== 1) {
+        setError(trace, new Error("Multiple tool calls"), {
+          reason: "multiple_tool_calls",
         });
-
-        let result;
-        try {
-          result = await runTool({
-            name,
-            args,
-            baseUrl,
-          });
-        } catch (error) {
-          setError(trace, error, {
-            reason: "tool_execution_failed",
-            tool: name,
-            args,
-          });
-
-          return { message: error.message || "Error en backend" };
-        }
-
-        addToolResult(trace, {
-          name,
-          result,
-          state,
-          ok: true,
-        });
-
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result),
-        });
-
-        if (name === "decideMaps") {
-          state = "DECIDE_DONE";
-          setState(trace, state, { tool: name });
-        }
-
-        if (name === "executePayload") {
-          state = "EXECUTE_DONE";
-          setState(trace, state, { tool: name });
-        }
+        return { message: "Error en tools" };
       }
 
-      continue;
-    }
+      const toolCall = toolCalls[0];
+      const name = toolCall.function?.name || toolCall.name;
 
-    // =========================
-    // DECIDE_DONE
-    // =========================
-    if (state === "DECIDE_DONE") {
-      addDecision(trace, {
+      // VALIDAR ORDEN
+      if (state === "DECIDE" && name !== "decideMaps") {
+        return { message: "Error: flujo inválido" };
+      }
+
+      if (state === "DECIDE_DONE" && name !== "executePayload") {
+        return { message: "Error: flujo inválido" };
+      }
+
+      if (state === "EXECUTE_DONE") {
+        return { message: "Error: flujo inválido" };
+      }
+
+      // PARSE ARGS
+      let args = {};
+      try {
+        const raw =
+          toolCall.function?.arguments || toolCall.arguments || "{}";
+        args = JSON.parse(raw);
+      } catch (error) {
+        setError(trace, error, {
+          reason: "invalid_tool_args",
+          tool: name,
+        });
+        return { message: "Error en tools" };
+      }
+
+      addToolCall(trace, {
+        name,
+        args,
+        toolCallId: toolCall.id,
         state,
-        decision: "request_execute_or_respond",
+      });
+
+      // EXECUTE
+      let result;
+      try {
+        result = await runTool({
+          name,
+          args: {
+            ...args,
+            trace_id: trace.trace_id,
+          },
+          baseUrl,
+        });
+      } catch (error) {
+        setError(trace, error, {
+          reason: "tool_execution_failed",
+          tool: name,
+        });
+        return { message: "Error en backend" };
+      }
+
+      addToolResult(trace, {
+        name,
+        result,
+        state,
+        ok: true,
       });
 
       messages.push({
-        role: "system",
-        content:
-          "Analiza los mapas recibidos. Si hay datos relevantes, debes llamar executePayload. Si no hay datos, responde.",
+        role: "tool",
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result),
       });
 
-      state = "DECIDE_EVAL";
-      setState(trace, state);
+      // TRANSICIONES
+      if (name === "decideMaps") {
+        state = "DECIDE_DONE";
+        setState(trace, state);
+      }
+
+      if (name === "executePayload") {
+        state = "EXECUTE_DONE";
+        setState(trace, state);
+      }
 
       continue;
     }
 
     // =========================
-    // DECIDE_EVAL
+    // RESPUESTA FINAL
     // =========================
-    if (state === "DECIDE_EVAL") {
-      if (hasTools) continue;
-
-      if (hasContent) {
-        const message = llmResponse.content;
-
-        setOutput(trace, {
-          message,
-          source: "llm",
-          reason: "respond_after_decide_eval",
-        });
-
-        return { message };
-      }
-
-      const message = "No hay información disponible";
-
+    if (hasContent) {
       setOutput(trace, {
-        message,
-        source: "fallback",
-        reason: "empty_after_decide_eval",
+        message: llmResponse.content,
+        source: "llm",
       });
 
-      return { message };
+      return { message: llmResponse.content };
     }
 
-    // =========================
-    // EXECUTE_DONE
-    // =========================
-    if (state === "EXECUTE_DONE") {
-      if (hasContent) {
-        const message = llmResponse.content;
+    // fallback duro
+    const message = "No hay información disponible";
 
-        setOutput(trace, {
-          message,
-          source: "llm",
-          reason: "respond_after_execute",
-        });
+    setOutput(trace, {
+      message,
+      source: "fallback",
+    });
 
-        return { message };
-      }
-
-      messages.push({
-        role: "system",
-        content: "Con los datos recibidos, genera la respuesta final ahora.",
-      });
-
-      state = "RESPOND";
-      setState(trace, state, {
-        trigger: "force_final_response",
-      });
-
-      continue;
-    }
-
-    // =========================
-    // RESPOND
-    // =========================
-    if (state === "RESPOND") {
-      if (hasContent) {
-        const message = llmResponse.content;
-
-        setOutput(trace, {
-          message,
-          source: "llm",
-          reason: "respond_state_final",
-        });
-
-        return { message };
-      }
-
-      const message = "No hay información disponible";
-
-      setOutput(trace, {
-        message,
-        source: "fallback",
-        reason: "empty_in_respond_state",
-      });
-
-      return { message };
-    }
+    return { message };
   }
 
   const message = "Error: límite de iteraciones alcanzado";
@@ -277,7 +199,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
   setOutput(trace, {
     message,
     source: "guardrail",
-    reason: "max_iterations",
   });
 
   return { message };
