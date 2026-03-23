@@ -39,15 +39,23 @@ export default async function handler(req, res) {
       const llmResponse = await callLLM(messages);
 
       if (!llmResponse) {
-      return res.status(200).json({
-      message: "Error al procesar la solicitud",
-          });
+        return res.status(200).json({
+          message: "Error al procesar la solicitud",
+        });
       }
 
       messages.push(llmResponse);
 
-      // respuesta final
+      // 🔥 ENFORCEMENT: no permitir respuesta sin pasar por backend cuando corresponde
+      const hasToolExecution = messages.some(m => m.role === "tool");
+
       if (!llmResponse.tool_calls || llmResponse.tool_calls.length === 0) {
+        if (!hasToolExecution) {
+          return res.status(200).json({
+            message: "Error de flujo: falta ejecución de backend",
+          });
+        }
+
         return res.status(200).json({
           message: llmResponse.content || "No hay información disponible.",
         });
@@ -61,7 +69,7 @@ export default async function handler(req, res) {
         try {
           args = JSON.parse(argsString || "{}");
         } catch {
-          return res.status(500).json({ error: "invalid_tool_args" });
+          return res.status(200).json({ message: "Error en formato de tools" });
         }
 
         let result;
@@ -75,8 +83,8 @@ export default async function handler(req, res) {
         } catch (err) {
           console.error("TOOL_ERROR:", err.message);
 
-          return res.status(500).json({
-            error: err.message || "tool_error",
+          return res.status(200).json({
+            message: err.message || "Error en ejecución de backend",
           });
         }
 
@@ -88,13 +96,15 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(500).json({ error: "tool_loop_limit" });
+    return res.status(200).json({
+      message: "Error: límite de iteraciones alcanzado",
+    });
 
   } catch (err) {
     console.error("CHAT_ERROR:", err);
 
-    return res.status(500).json({
-      error: "backend_error",
+    return res.status(200).json({
+      message: "Error interno del sistema",
     });
   }
 }
