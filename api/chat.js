@@ -1,14 +1,14 @@
 // /api/chat.js
 
-import { systemPrompt } from "@/core/systemPrompt";
-import { runRuntime } from "@/core/chat/runtime";
+import { systemPrompt } from "../core/systemPrompt.js";
+import { runRuntime } from "../core/chat/runtime.js";
 
 import {
   createTrace,
   addNote,
   setError,
   toSerializableTrace,
-} from "@/core/trace";
+} from "../core/trace.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
