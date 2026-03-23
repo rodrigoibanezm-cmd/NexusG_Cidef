@@ -11,6 +11,11 @@ endpoint = "/api/execute";
 throw new Error("Unknown tool: " + name);
 }
 
+// 🔥 FIX: asegurar trace_id en todas las llamadas
+if (!args?.trace_id) {
+throw new Error(`Missing trace_id for tool: ${name}`);
+}
+
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -31,7 +36,6 @@ throw new Error(`Tool timeout: ${name}`);
 }
 
 ```
-// 🔧 FIX: mantener contexto del error real
 throw new Error(`Tool network error: ${name} | ${err.message}`);
 ```
 
@@ -43,7 +47,7 @@ if (!res.ok) {
 let body;
 try {
 body = await res.text();
-body = body?.slice(0, 500); // 🔧 opcional: truncar para logs
+body = body?.slice(0, 500);
 } catch {
 body = "unreadable body";
 }
