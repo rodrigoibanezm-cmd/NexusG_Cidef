@@ -1,4 +1,4 @@
-//// /api/chat.js
+// api/chat.js
 
 import executeNormal from "./execute.normal.js";
 import { render } from "../services/llm/render.js";
@@ -33,41 +33,69 @@ export default async function handler(req, res) {
     }
 
     // =========================
-    // 1. DECIDE (HTTP interno correcto)
+    // 1. DECIDE (HTTP interno + robusto)
     // =========================
-    const baseUrl = `https://${req.headers.host}`;
+    const protocol = req.headers["x-forwarded-proto"] || "https";
+    const baseUrl = `${protocol}://${req.headers.host}`;
 
-    const decideRes = await fetch(`${baseUrl}/api/decide`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
-    const decision = await decideRes.json();
+    let decision;
 
-    const topics = decision?.topic ? [decision.topic] : ["ficha"];
-    const models = Array.isArray(decision?.models) ? decision.models : [];
+    try {
+      const decideRes = await fetch(`${baseUrl}/api/decide`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!decideRes.ok) {
+        throw new Error("decide_http_error");
+      }
+
+      decision = await decideRes.json();
+    } catch (e) {
+      clearTimeout(timeout);
+
+      const error =
+        e.name === "AbortError" ? "decide_timeout" : "decide_failed";
+
+      return res.status(200).json({
+        sessionId: "test-session",
+        messages: history,
+        error,
+      });
+    }
+
+    if (!decision || !decision.topic) {
+      return res.status(200).json({
+        sessionId: "test-session",
+        messages: history,
+        error: "decide_invalid",
+      });
+    }
+
+    const topic = decision.topic;
+    const models = Array.isArray(decision.models) ? decision.models : [];
 
     // =========================
     // 2. EXECUTE
     // =========================
-    let allData = [];
+    const execResponse = await executeNormal({
+      trace_id: `trace_${Date.now()}_${Math.random()}`,
+      topic,
+      models,
+    });
 
-    for (const topic of topics) {
-      const execResponse = await executeNormal({
-        trace_id: `trace_${Date.now()}_${topic}`,
-        topic,
-        models,
-      });
+    const data = execResponse?.data || [];
 
-      if (execResponse && execResponse.data) {
-        allData = allData.concat(execResponse.data);
-      }
-    }
-
-    if (!allData.length) {
+    if (!data.length) {
       return res.status(200).json({
         sessionId: "test-session",
         messages: history,
@@ -78,19 +106,26 @@ export default async function handler(req, res) {
     // =========================
     // 3. RENDER
     // =========================
-    const content = await render(allData, message);
+    const content = await render(data, message);
+
+    const now = Date.now();
 
     history.push({
+      id: `msg_${now}_user`,
       role: "user",
       content: message,
-      timestamp: Date.now(),
+      timestamp: now,
     });
 
     history.push({
+      id: `msg_${now}_assistant`,
       role: "assistant",
       content,
       timestamp: Date.now(),
     });
+
+    // mantener pares
+    if (history.length > 50) history.splice(0, 2);
 
     return res.status(200).json({
       sessionId: "test-session",
