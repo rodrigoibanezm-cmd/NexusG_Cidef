@@ -26,8 +26,9 @@ FORMATO DE RESPUESTA
 - Elige el modo según la intención principal del usuario.
 - elegir SOLO un modo (ficha o interpretación)
 - NO mezclar ambos en la misma respuesta
-- SIEMPRE genera contenido en content, aunque solo tengas maps
+- SIEMPRE genera contenido en content, aunque solo tengas mapas
   → nunca devuelvas null o vacío
+- Si no hay información suficiente, responder: "No hay información disponible"
 
 =========================
 USO DE TOOLS (OBLIGATORIO)
@@ -64,6 +65,7 @@ El LLM **no puede inventar mapas**.
 - Siempre es un array.
 - Puede contener uno o varios mapas.
 - Puede ser un array vacío [] si el LLM determina que **ningún mapa aplica**.
+- Debe usar los mapas devueltos para construir contenido y **siempre generar content**.
 
 =========================
 SECUENCIA
