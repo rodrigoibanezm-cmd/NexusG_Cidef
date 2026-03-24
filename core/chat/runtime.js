@@ -65,7 +65,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       setState(trace, state);
     }
 
-    // TOOL
+    // TOOL HANDLING
     if (hasTools) {
       if (toolCalls.length !== 1) {
         return { message: "Error en tools" };
@@ -104,7 +104,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         });
 
         console.log("TOOL RESULT:", result);
-
       } catch (error) {
         setError(trace, error, { reason: "tool_execution_failed" });
         return { message: "Error en backend" };
@@ -123,23 +122,60 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // 🔥 FIX CLAVE: forzar execute si hay maps con data
+      // 🔥 FIX CLAVE: FORZAR EXECUTE DESPUÉS DE DECIDE
       if (name === "decideMaps") {
         state = "DECIDE_DONE";
         setState(trace, state);
 
         const maps = result?.maps || {};
+
         const hasData = Object.values(maps).some(
           (v) => v && (Array.isArray(v) ? v.length > 0 : true)
         );
 
-        if (hasData) {
-          messages.push({
-            role: "system",
-            content:
-              "Debes llamar inmediatamente a executePayload usando los mapas recibidos. Usa models = [] si no puedes identificar modelos.",
-          });
+        if (!hasData) {
+          return { message: "No hay información disponible" };
         }
+
+        // 🔥 llamada directa a execute (sin LLM)
+        const topic = Object.keys(maps)[0];
+        const models = [];
+
+        console.log("FORCED EXECUTE:", topic, models);
+
+        let executeResult;
+        try {
+          executeResult = await runTool({
+            name: "executePayload",
+            args: {
+              topic,
+              models,
+              trace_id: trace.trace_id,
+            },
+            baseUrl,
+          });
+
+          console.log("EXECUTE RESULT:", executeResult);
+        } catch (error) {
+          setError(trace, error, { reason: "execute_failed" });
+          return { message: "Error en backend" };
+        }
+
+        addToolResult(trace, {
+          name: "executePayload",
+          result: executeResult,
+          state,
+          ok: true,
+        });
+
+        messages.push({
+          role: "tool",
+          tool_call_id: "forced_execute",
+          content: JSON.stringify(executeResult),
+        });
+
+        state = "EXECUTE_DONE";
+        setState(trace, state);
 
         continue;
       }
