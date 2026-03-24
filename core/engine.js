@@ -1,165 +1,121 @@
-/core/engine.js
+// /core/engine.js
 
-import { createContext } from "./context.js";
-import { callLLM } from "../services/llm.js";
+import { callLLM } from "../services/llm/callLLM.js";
 import { runTool } from "../services/tools.js";
 
-export async function runAgent({ message, req, systemPrompt, trace }) {
-const context = createContext({ message, systemPrompt });
+const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
-const protocol = req.headers["x-forwarded-proto"] || "https";
-const baseUrl = `${protocol}://${req.headers.host}`;
+export async function runEngine({
+  message,
+  req,
+  systemPrompt,
+  trace,
+  tenant_id,
+}) {
+  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const baseUrl = `${protocol}://${req.headers.host}`;
 
-let steps = 0;
+  // =========================
+  // 1. LLM → JSON decisión
+  // =========================
+  const llmResponse = await callLLM([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: message },
+  ]);
 
-while (steps++ < 8) {
-const llmResponse = await callLLM(context.messages);
-
-```
-if (!llmResponse) {
-  throw new Error("LLM returned null response");
-}
-
-context.messages.push(llmResponse);
-
-const toolCalls = llmResponse.tool_calls || [];
-const hasTools = toolCalls.length > 0;
-const content = llmResponse.content;
-const hasContent =
-  typeof content === "string" && content.trim() !== "";
-
-// =========================
-// STATE: START
-// =========================
-if (context.state === "START") {
-  if (!hasTools) {
-    throw new Error("Invalid: START must call decideMaps");
+  if (!llmResponse || !llmResponse.content) {
+    throw new Error("LLM returned empty response");
   }
 
-  if (toolCalls.length !== 1) {
-    throw new Error("Invalid: only 1 tool_call allowed per step");
-  }
+  let decision;
 
-  const name = toolCalls[0].function?.name || toolCalls[0].name;
-
-  if (name !== "decideMaps") {
-    throw new Error("Invalid transition: START → " + name);
-  }
-}
-
-// =========================
-// TOOL EXECUTION
-// =========================
-if (hasTools) {
-  if (toolCalls.length !== 1) {
-    throw new Error("Invalid: multiple tool_calls not allowed");
-  }
-
-  const toolCall = toolCalls[0];
-  const name = toolCall.function?.name || toolCall.name;
-
-  // -------- VALIDACIÓN DE TRANSICIÓN --------
-  if (context.state === "START" && name !== "decideMaps") {
-    throw new Error("Invalid transition: START → " + name);
-  }
-
-  if (
-    context.state === "DECIDE_DONE" &&
-    name !== "executePayload"
-  ) {
-    throw new Error("Invalid transition: DECIDE_DONE → " + name);
-  }
-
-  if (context.state === "EXECUTE_DONE") {
-    throw new Error("Invalid: EXECUTE_DONE cannot call tools");
-  }
-
-  // -------- PARSE ARGS --------
-  let args = {};
   try {
-    const argsString =
-      toolCall.function?.arguments || toolCall.arguments || "{}";
-    args = JSON.parse(argsString);
+    decision = JSON.parse(llmResponse.content);
   } catch {
-    throw new Error("Invalid tool arguments JSON");
+    throw new Error("Invalid JSON from LLM");
   }
 
-  // -------- EXECUTE TOOL --------
-  const result = await runTool({
-    name,
+  // =========================
+  // 2. Validación JSON
+  // =========================
+  if (
+    !decision ||
+    !Array.isArray(decision.maps) ||
+    !Array.isArray(decision.models)
+  ) {
+    throw new Error("Invalid LLM JSON structure");
+  }
+
+  const maps = decision.maps;
+  const models = decision.models;
+
+  // =========================
+  // 3. Caso sin maps
+  // =========================
+  if (maps.length === 0) {
+    return {
+      message: "No hay información disponible",
+    };
+  }
+
+  const topic = maps[0]; // v1: primer map
+
+  // =========================
+  // 4. Validar topic
+  // =========================
+  if (!VALID_TOPICS.includes(topic)) {
+    throw new Error("Invalid topic");
+  }
+
+  // =========================
+  // 5. decideMaps
+  // =========================
+  // Nota:
+  // decideMaps se ejecuta por validación y contrato de arquitectura.
+  // No se utiliza directamente en v1, pero asegura consistencia,
+  // trazabilidad y compatibilidad con el agente GPT.
+  const decideResult = await runTool({
+    name: "decideMaps",
     args: {
-      ...args,
-      trace_id: trace?.trace_id, // 🔥 FIX: alineado con schema
+      requested_maps: maps,
+      trace_id: trace?.trace_id,
     },
     baseUrl,
+    tenant_id,
   });
 
-  context.messages.push({
-    role: "tool",
-    tool_call_id: toolCall.id,
-    content: JSON.stringify(result),
+  // =========================
+  // 6. executePayload
+  // =========================
+  const executeResult = await runTool({
+    name: "executePayload",
+    args: {
+      topic,
+      models,
+      trace_id: trace?.trace_id,
+    },
+    baseUrl,
+    tenant_id,
   });
 
-  context.lastTool = name;
+  // =========================
+  // 7. Validar respuesta execute
+  // =========================
+  const data = executeResult?.data;
+
+  const hasValidData =
+    Array.isArray(data) && data.some((x) => x !== null);
+
+  if (!hasValidData) {
+    return {
+      message: "No hay información disponible",
+    };
+  }
 
   // =========================
-  // TRANSICIONES
+  // 8. Respuesta final
   // =========================
-
-  if (name === "decideMaps") {
-    context.state = "DECIDE_DONE";
-
-    // 🔥 FIX: derivar desde maps (no models)
-    const maps = result?.maps || {};
-
-    const hasData =
-      maps &&
-      typeof maps === "object" &&
-      Object.keys(maps).length > 0;
-
-    context.mustExecute = hasData;
-  }
-
-  if (name === "executePayload") {
-    context.state = "EXECUTE_DONE";
-  }
-
-  continue;
-}
-
-// =========================
-// STATE: DECIDE_DONE
-// =========================
-if (context.state === "DECIDE_DONE") {
-  if (context.mustExecute) {
-    throw new Error("Missing executePayload when maps contain data");
-  }
-
-  if (hasContent) {
-    return { message: content };
-  }
-
-  throw new Error("Invalid: DECIDE_DONE must respond if no execute");
-}
-
-// =========================
-// STATE: EXECUTE_DONE
-// =========================
-if (context.state === "EXECUTE_DONE") {
-  if (!hasContent) {
-    throw new Error("Invalid: EXECUTE_DONE must produce response");
-  }
-
-  return { message: content };
-}
-
-// =========================
-// FALLBACK
-// =========================
-throw new Error("Invalid state reached: " + context.state);
-```
-
-}
-
-throw new Error("Max steps exceeded");
+  return {
+    message: JSON.stringify(executeResult),
+  };
 }
