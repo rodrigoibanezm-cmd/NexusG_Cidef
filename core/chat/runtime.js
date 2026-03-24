@@ -58,7 +58,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       const name = toolCalls[0]?.function?.name || toolCalls[0]?.name;
 
       if (name !== "decideMaps") {
-        return { message: "Error: flujo inválido" };
+        return { message: "No hay información disponible" };
       }
 
       state = "DECIDE";
@@ -73,18 +73,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
 
       const toolCall = toolCalls[0];
       const name = toolCall.function?.name || toolCall.name;
-
-      if (state === "DECIDE" && name !== "decideMaps") {
-        return { message: "Error: flujo inválido" };
-      }
-
-      if (state === "DECIDE_DONE" && name !== "executePayload") {
-        return { message: "No hay información disponible" };
-      }
-
-      if (state === "EXECUTE_DONE") {
-        return { message: "Error: flujo inválido" };
-      }
 
       let args = {};
       try {
@@ -101,7 +89,9 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         toolCallId: toolCall.id,
         state,
       });
-  console.log("TOOL CALL:", name, args);
+
+      console.log("TOOL CALL:", name, args);
+
       let result;
       try {
         result = await runTool({
@@ -113,7 +103,8 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           baseUrl,
         });
 
-      console.log("TOOL RESULT:", result);
+        console.log("TOOL RESULT:", result);
+
       } catch (error) {
         setError(trace, error, { reason: "tool_execution_failed" });
         return { message: "Error en backend" };
@@ -132,17 +123,32 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
+      // 🔥 FIX CLAVE: forzar execute si hay maps con data
       if (name === "decideMaps") {
         state = "DECIDE_DONE";
         setState(trace, state);
+
+        const maps = result?.maps || {};
+        const hasData = Object.values(maps).some(
+          (v) => v && (Array.isArray(v) ? v.length > 0 : true)
+        );
+
+        if (hasData) {
+          messages.push({
+            role: "system",
+            content:
+              "Debes llamar inmediatamente a executePayload usando los mapas recibidos. Usa models = [] si no puedes identificar modelos.",
+          });
+        }
+
+        continue;
       }
 
       if (name === "executePayload") {
         state = "EXECUTE_DONE";
         setState(trace, state);
+        continue;
       }
-
-      continue;
     }
 
     // RESPUESTA FINAL
