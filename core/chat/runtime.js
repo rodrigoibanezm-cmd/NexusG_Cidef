@@ -79,7 +79,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       }
 
       if (state === "DECIDE_DONE" && name !== "executePayload") {
-        return { message: "Error: flujo inválido" };
+        return { message: "No hay información disponible" };
       }
 
       if (state === "EXECUTE_DONE") {
