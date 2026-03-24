@@ -106,7 +106,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // DECIDE → EXECUTE (runtime construye request)
+      // DECIDE → EXECUTE (SIEMPRE)
       if (name === "decideMaps") {
         const maps = result?.maps || {};
 
@@ -128,9 +128,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           models = mapData.modelos;
         }
 
-        if (!models.length) {
-          return { message: "No hay información disponible" };
-        }
+        // 🔥 IMPORTANTE: NO bloquear si models está vacío
 
         let executeResult;
         try {
