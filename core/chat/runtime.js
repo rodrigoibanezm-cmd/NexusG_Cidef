@@ -13,7 +13,6 @@ import {
 
 import { callLLM } from "../../services/llm/callLLM.js";
 import { runTool } from "../../services/tools.js";
-import { extractExecuteInput } from "../engine/forceExecute.js";
 
 export async function runRuntime({ messages, trace, baseUrl }) {
   let state = "START";
@@ -48,7 +47,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       typeof llmResponse.content === "string" &&
       llmResponse.content.trim() !== "";
 
-    // START → debe ser decide
+    // START → debe llamar decideMaps
     if (state === "START") {
       if (!hasTools) {
         return { message: "No hay información disponible" };
@@ -66,6 +65,10 @@ export async function runRuntime({ messages, trace, baseUrl }) {
 
     // TOOL
     if (hasTools) {
+      if (toolCalls.length !== 1) {
+        return { message: "Error en tools" };
+      }
+
       const toolCall = toolCalls[0];
       const name = toolCall.function?.name || toolCall.name;
 
@@ -84,7 +87,10 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       try {
         result = await runTool({
           name,
-          args: { ...args, trace_id: trace.trace_id },
+          args: {
+            ...args,
+            trace_id: trace.trace_id,
+          },
           baseUrl,
         });
       } catch (error) {
@@ -100,19 +106,33 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // decide → force execute
+      // DECIDE → EXECUTE (runtime construye request)
       if (name === "decideMaps") {
         const maps = result?.maps || {};
 
-        const hasData = Object.values(maps).some(
-          (v) => v && (Array.isArray(v) ? v.length > 0 : true)
+        const topic = Object.keys(maps).find(
+          (k) => maps[k] && (Array.isArray(maps[k]) ? maps[k].length : true)
         );
 
-        if (!hasData) {
+        if (!topic) {
           return { message: "No hay información disponible" };
         }
 
-        const { topic, models } = extractExecuteInput(maps);
+        const mapData = maps[topic];
+
+        let models = [];
+
+        if (Array.isArray(mapData)) {
+          models = mapData
+            .map((item) => item?.modelo)
+            .filter(Boolean);
+        } else if (mapData?.modelos) {
+          models = mapData.modelos;
+        }
+
+        if (!models.length) {
+          return { message: "No hay información disponible" };
+        }
 
         let executeResult;
         try {
