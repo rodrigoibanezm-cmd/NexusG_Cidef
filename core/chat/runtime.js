@@ -101,7 +101,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         toolCallId: toolCall.id,
         state,
       });
-
+  console.log("TOOL CALL:", name, args);
       let result;
       try {
         result = await runTool({
