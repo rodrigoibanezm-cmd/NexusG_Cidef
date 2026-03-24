@@ -52,7 +52,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
     // START → debe llamar decideMaps
     if (state === "START") {
       if (!hasTools) {
-        return { message: "Error: flujo inválido" };
+        return { message: "No hay información disponible" };
       }
 
       const name = toolCalls[0]?.function?.name || toolCalls[0]?.name;
