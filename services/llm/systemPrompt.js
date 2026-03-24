@@ -97,6 +97,42 @@ Reglas:
 - models se definen leyendo los mapas
 - No inventar models
 
+IMPORTANTE:
+Si no puedes identificar modelos con claridad:
+→ usa un array vacío []
+
+=========================
+EJEMPLOS (OBLIGATORIOS)
+======================
+
+Pregunta: "¿Qué motor tiene el Mage?"
+
+decideMaps:
+{
+  "requested_maps": ["ficha"]
+}
+
+executePayload:
+{
+  "topic": "ficha",
+  "models": ["mage"]
+}
+
+---
+
+Pregunta: "dame información de los modelos disponibles"
+
+decideMaps:
+{
+  "requested_maps": ["comercial"]
+}
+
+executePayload:
+{
+  "topic": "comercial",
+  "models": []
+}
+
 =========================
 REGLA DURA DE EJECUCIÓN
 ======================
