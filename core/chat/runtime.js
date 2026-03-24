@@ -112,6 +112,8 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           },
           baseUrl,
         });
+
+      console.log("TOOL RESULT:", result);
       } catch (error) {
         setError(trace, error, { reason: "tool_execution_failed" });
         return { message: "Error en backend" };
