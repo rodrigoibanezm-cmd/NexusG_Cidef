@@ -110,9 +110,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       if (name === "decideMaps") {
         const maps = result?.maps || {};
 
-        const topic = Object.keys(maps).find(
-          (k) => maps[k] && (Array.isArray(maps[k]) ? maps[k].length : true)
-        );
+        const topic = Object.keys(maps)[0];
 
         if (!topic) {
           return { message: "No hay información disponible" };
