@@ -13,6 +13,7 @@ import {
 
 import { callLLM } from "../../services/llm/callLLM.js";
 import { runTool } from "../../services/tools.js";
+import { extractExecuteInput } from "../engine/forceExecute.js";
 
 export async function runRuntime({ messages, trace, baseUrl }) {
   let state = "START";
@@ -36,9 +37,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
     addLLMResponse(trace, llmResponse);
 
     if (!llmResponse) {
-      const message = "No hay información disponible";
-      setOutput(trace, { message });
-      return { message };
+      return { message: "No hay información disponible" };
     }
 
     messages.push(llmResponse);
@@ -49,7 +48,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       typeof llmResponse.content === "string" &&
       llmResponse.content.trim() !== "";
 
-    // START → debe llamar decideMaps
+    // START → debe ser decide
     if (state === "START") {
       if (!hasTools) {
         return { message: "No hay información disponible" };
@@ -65,56 +64,35 @@ export async function runRuntime({ messages, trace, baseUrl }) {
       setState(trace, state);
     }
 
-    // TOOL HANDLING
+    // TOOL
     if (hasTools) {
-      if (toolCalls.length !== 1) {
-        return { message: "Error en tools" };
-      }
-
       const toolCall = toolCalls[0];
       const name = toolCall.function?.name || toolCall.name;
 
       let args = {};
       try {
-        const raw =
-          toolCall.function?.arguments || toolCall.arguments || "{}";
-        args = JSON.parse(raw);
+        args = JSON.parse(
+          toolCall.function?.arguments || toolCall.arguments || "{}"
+        );
       } catch {
         return { message: "Error en tools" };
       }
 
-      addToolCall(trace, {
-        name,
-        args,
-        toolCallId: toolCall.id,
-        state,
-      });
-
-      console.log("TOOL CALL:", name, args);
+      addToolCall(trace, { name, args, state });
 
       let result;
       try {
         result = await runTool({
           name,
-          args: {
-            ...args,
-            trace_id: trace.trace_id,
-          },
+          args: { ...args, trace_id: trace.trace_id },
           baseUrl,
         });
-
-        console.log("TOOL RESULT:", result);
       } catch (error) {
-        setError(trace, error, { reason: "tool_execution_failed" });
+        setError(trace, error, { reason: "tool_failed" });
         return { message: "Error en backend" };
       }
 
-      addToolResult(trace, {
-        name,
-        result,
-        state,
-        ok: true,
-      });
+      addToolResult(trace, { name, result, state, ok: true });
 
       messages.push({
         role: "tool",
@@ -122,11 +100,8 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // 🔥 DECIDE → FORZAR EXECUTE
+      // decide → force execute
       if (name === "decideMaps") {
-        state = "DECIDE_DONE";
-        setState(trace, state);
-
         const maps = result?.maps || {};
 
         const hasData = Object.values(maps).some(
@@ -137,28 +112,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           return { message: "No hay información disponible" };
         }
 
-        const topic = Object.keys(maps)[0];
-
-        // 🔥 EXTRAER MODELOS DESDE MAPS
-        let models = [];
-
-        const mapData = maps[topic];
-
-        if (Array.isArray(mapData)) {
-          models = mapData
-            .map((item) => item?.modelo || item?.model || item?.name)
-            .filter(Boolean);
-        } else if (mapData?.modelos) {
-          models = mapData.modelos;
-        }
-
-        if (!models.length) {
-          models = [];
-        }
-
-        console.log("MODELS EXTRACTED:", models);
-
-        console.log("FORCED EXECUTE:", topic, models);
+        const { topic, models } = extractExecuteInput(maps);
 
         let executeResult;
         try {
@@ -171,8 +125,6 @@ export async function runRuntime({ messages, trace, baseUrl }) {
             },
             baseUrl,
           });
-
-          console.log("EXECUTE RESULT:", executeResult);
         } catch (error) {
           setError(trace, error, { reason: "execute_failed" });
           return { message: "Error en backend" };
@@ -196,20 +148,11 @@ export async function runRuntime({ messages, trace, baseUrl }) {
 
         continue;
       }
-
-      if (name === "executePayload") {
-        state = "EXECUTE_DONE";
-        setState(trace, state);
-        continue;
-      }
     }
 
     // RESPUESTA FINAL
     if (hasContent) {
-      setOutput(trace, {
-        message: llmResponse.content,
-      });
-
+      setOutput(trace, { message: llmResponse.content });
       return { message: llmResponse.content };
     }
 
