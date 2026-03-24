@@ -12,10 +12,11 @@ export async function callLLM(messages) {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o",
-        messages,
-        temperature: 0.2,
-        tools: [
+      model: "gpt-4o",
+      messages,
+      temperature: 0.2,
+      tool_choice: "auto",
+      tools: [
           {
             type: "function",
             function: {
