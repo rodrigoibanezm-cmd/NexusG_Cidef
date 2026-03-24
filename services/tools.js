@@ -1,61 +1,57 @@
 // /services/tools.js
 
-export async function runTool({ name, args, baseUrl }) {
-  let endpoint;
+// =========================
+// ROUTING (robusto)
+// =========================
+const routes = {
+  decideMaps: "/api/decide",
+  executePayload: "/api/execute",
+};
 
-  if (name === "decideMaps") {
-    endpoint = "/api/decide";
-  } else if (name === "executePayload") {
-    endpoint = "/api/execute";
-  } else {
-    throw new Error("Unknown tool: " + name);
+// =========================
+// MULTI-TENANT
+// =========================
+function resolveModels(models = [], tenant_id) {
+  if (!Array.isArray(models)) return [];
+
+  // si no hay tenant, no modificamos
+  if (!tenant_id) return models;
+
+  return models.map((m) => `${tenant_id}:${m}`);
+}
+
+// =========================
+// TOOL EXECUTION
+// =========================
+export async function runTool({ name, args = {}, baseUrl, tenant_id }) {
+  const path = routes[name];
+
+  if (!path) {
+    throw new Error(`Unknown tool: ${name}`);
   }
 
-  if (!args?.trace_id) {
-    throw new Error(`Missing trace_id for tool: ${name}`);
-  }
+  const url = `${baseUrl}${path}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  // =========================
+  // INJECT TENANT (clean)
+  // =========================
+  const resolvedArgs = {
+    ...args,
+    models: resolveModels(args.models, tenant_id),
+  };
 
-  let res;
-
-  try {
-    res = await fetch(`${baseUrl}${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(args),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error(`Tool timeout: ${name}`);
-    }
-
-    throw new Error(`Tool network error: ${name} | ${err.message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-tenant-id": tenant_id || "",
+    },
+    body: JSON.stringify(resolvedArgs),
+  });
 
   if (!res.ok) {
-    let body;
-    try {
-      body = await res.text();
-      body = body?.slice(0, 500);
-    } catch {
-      body = "unreadable body";
-    }
-
-    throw new Error(
-      `Tool error: ${name} | status: ${res.status} | body: ${body}`
-    );
+    throw new Error(`Tool ${name} failed with status ${res.status}`);
   }
 
-  try {
-    return await res.json();
-  } catch {
-    throw new Error(`Invalid JSON response from tool: ${name}`);
-  }
+  return await res.json();
 }
