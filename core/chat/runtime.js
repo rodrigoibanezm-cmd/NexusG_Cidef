@@ -122,7 +122,7 @@ export async function runRuntime({ messages, trace, baseUrl }) {
         content: JSON.stringify(result),
       });
 
-      // 🔥 FIX CLAVE: FORZAR EXECUTE DESPUÉS DE DECIDE
+      // 🔥 DECIDE → FORZAR EXECUTE
       if (name === "decideMaps") {
         state = "DECIDE_DONE";
         setState(trace, state);
@@ -137,9 +137,26 @@ export async function runRuntime({ messages, trace, baseUrl }) {
           return { message: "No hay información disponible" };
         }
 
-        // 🔥 llamada directa a execute (sin LLM)
         const topic = Object.keys(maps)[0];
-        const models = [];
+
+        // 🔥 EXTRAER MODELOS DESDE MAPS
+        let models = [];
+
+        const mapData = maps[topic];
+
+        if (Array.isArray(mapData)) {
+          models = mapData
+            .map((item) => item?.modelo || item?.model || item?.name)
+            .filter(Boolean);
+        } else if (mapData?.modelos) {
+          models = mapData.modelos;
+        }
+
+        if (!models.length) {
+          models = [];
+        }
+
+        console.log("MODELS EXTRACTED:", models);
 
         console.log("FORCED EXECUTE:", topic, models);
 
