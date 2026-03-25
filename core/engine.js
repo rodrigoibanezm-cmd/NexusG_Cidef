@@ -109,7 +109,7 @@ export async function runEngine({
     // =========================
     let models = [];
 
-    const requiresModels = ["cliente", "comercial"].includes(topic);
+    const requiresModels = ["cliente", "comercial", "ficha", "mitos"].includes(topic);
 
     console.log("REQUIRES MODELS:", requiresModels);
 
