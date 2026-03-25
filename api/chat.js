@@ -11,9 +11,6 @@ import {
 } from "../core/trace.js";
 
 export default async function handler(req, res) {
-  // =========================
-  // CORS
-  // =========================
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
@@ -32,27 +29,18 @@ export default async function handler(req, res) {
   let trace = null;
 
   try {
-    // =========================
-    // AUTH OFF (piloto)
-    // =========================
     const tenant_id = null;
 
-    // =========================
-    // INPUT
-    // =========================
     const parsed = parseBody(req);
 
     if (!parsed.ok) {
       return res.status(parsed.status).json({
-        error: parsed.error,
+        response: parsed.error,
       });
     }
 
     const { message } = parsed;
 
-    // =========================
-    // TRACE (solo interno)
-    // =========================
     trace = createTrace({
       message,
       tenant_id,
@@ -66,9 +54,6 @@ export default async function handler(req, res) {
       tenant_id,
     });
 
-    // =========================
-    // ENGINE
-    // =========================
     const result = await runEngine({
       message,
       req,
@@ -77,11 +62,9 @@ export default async function handler(req, res) {
       tenant_id,
     });
 
-    // =========================
-    // RESPONSE
-    // =========================
+    // 🔥 CLAVE: siempre "response"
     return res.status(200).json({
-      message: result?.message || "No hay información disponible",
+      response: result?.message || "No hay información disponible",
     });
 
   } catch (error) {
@@ -94,7 +77,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      message: "Error interno del sistema",
+      response: "Error interno del sistema",
     });
   }
 }
