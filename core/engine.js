@@ -95,19 +95,29 @@ export async function runEngine({
     const requiresModels = ["cliente", "comercial"].includes(topic);
 
     if (requiresModels) {
-      models = await selectModels({
-        message,
-        maps: mapsData,
-      });
+      try {
+        models = await selectModels({
+          message,
+          maps: mapsData,
+        });
 
-      addNote(trace, "models_selected", {
-        count: models.length,
-        models: models.slice(0, 3),
-      });
+        addNote(trace, "models_selected", {
+          count: models.length,
+          models: models.slice(0, 3),
+        });
 
+      } catch (e) {
+        addNote(trace, "selector_error", {
+          message: e.message,
+        });
+
+        models = []; // fallback resiliente
+      }
+
+      // ⚠️ ya NO hacemos early exit aquí
+      // dejamos que execute decida si hay data o no
       if (!models.length) {
-        addNote(trace, "early_exit", { reason: "no_models" });
-        return { message: "No hay información disponible" };
+        addNote(trace, "models_empty", {});
       }
     }
 
