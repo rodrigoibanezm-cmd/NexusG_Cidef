@@ -5,26 +5,29 @@ import { runTool } from "../services/tools.js";
 import { render } from "../services/llm/render.js";
 import { selectModels } from "../services/selector/selectModels.js";
 
+import { addNote } from "./trace.js";
+
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
 // =========================
-// helper: parse robusto
+// PARSE JSON ROBUSTO
 // =========================
 function safeParseJSON(raw) {
   if (!raw) return null;
 
-  try {
-    const clean = raw
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
 
-    return JSON.parse(clean);
+  try {
+    return JSON.parse(match[0]);
   } catch {
     return null;
   }
 }
 
+// =========================
+// ENGINE
+// =========================
 export async function runEngine({
   message,
   req,
@@ -44,11 +47,7 @@ export async function runEngine({
       { role: "user", content: message },
     ]);
 
-    console.log("LLM DECIDE RAW:", decideRaw?.content);
-
     const decision = safeParseJSON(decideRaw?.content);
-
-    console.log("DECISION:", decision);
 
     if (!decision || !Array.isArray(decision.maps)) {
       throw new Error("Invalid LLM JSON (decide)");
@@ -56,12 +55,14 @@ export async function runEngine({
 
     const maps = decision.maps;
 
+    addNote(trace, "maps_detected", { maps });
+
     if (maps.length === 0) {
-      console.log("NO MAPS");
+      addNote(trace, "early_exit", { reason: "no_maps" });
       return { message: "No hay información disponible" };
     }
 
-    const topic = maps[0];
+    const topic = maps[0]; // single-topic por ahora
 
     if (!VALID_TOPICS.includes(topic)) {
       throw new Error("Invalid topic");
@@ -80,19 +81,35 @@ export async function runEngine({
       tenant_id,
     });
 
-    console.log("MAPS FOR LLM2:", decideResult.maps);
-
     const mapsData = decideResult?.maps || {};
 
-    // =========================
-    // 3. SELECT MODELS (NUEVO)
-    // =========================
-    const models = await selectModels({
-      message,
-      maps: mapsData,
+    addNote(trace, "maps_resolved", {
+      keys: Object.keys(mapsData),
     });
 
-    console.log("SELECTED MODELS:", models);
+    // =========================
+    // 3. SELECT MODELS (solo si aplica)
+    // =========================
+    let models = [];
+
+    const requiresModels = ["cliente", "comercial"].includes(topic);
+
+    if (requiresModels) {
+      models = await selectModels({
+        message,
+        maps: mapsData,
+      });
+
+      addNote(trace, "models_selected", {
+        count: models.length,
+        models: models.slice(0, 3),
+      });
+
+      if (!models.length) {
+        addNote(trace, "early_exit", { reason: "no_models" });
+        return { message: "No hay información disponible" };
+      }
+    }
 
     // =========================
     // 4. execute
@@ -108,16 +125,19 @@ export async function runEngine({
       tenant_id,
     });
 
-    console.log("EXECUTE RESULT:", executeResult);
-
     const data = executeResult?.data;
 
     const hasValidData =
       Array.isArray(data) &&
       data.some((x) => x && x.payload);
 
+    addNote(trace, "execute_result", {
+      hasData: hasValidData,
+      count: Array.isArray(data) ? data.length : 0,
+    });
+
     if (!hasValidData) {
-      console.log("NO VALID DATA");
+      addNote(trace, "early_exit", { reason: "no_data" });
       return { message: "No hay información disponible" };
     }
 
@@ -129,7 +149,10 @@ export async function runEngine({
       data,
     });
 
-    console.log("FINAL MESSAGE:", finalMessage);
+    addNote(trace, "render_complete", {
+      hasMessage: !!finalMessage,
+      length: finalMessage?.length || 0,
+    });
 
     return {
       message: finalMessage || "No hay información disponible",
@@ -137,6 +160,11 @@ export async function runEngine({
 
   } catch (e) {
     console.error("ENGINE ERROR:", e);
+
+    addNote(trace, "engine_error", {
+      message: e.message,
+    });
+
     return { message: "Error interno del sistema" };
   }
 }
