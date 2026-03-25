@@ -11,6 +11,9 @@ import {
 } from "../core/trace.js";
 
 export default async function handler(req, res) {
+  // =========================
+  // CORS
+  // =========================
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
@@ -29,18 +32,32 @@ export default async function handler(req, res) {
   let trace = null;
 
   try {
+    // =========================
+    // AUTH OFF (piloto)
+    // =========================
     const tenant_id = null;
 
+    // =========================
+    // INPUT
+    // =========================
     const parsed = parseBody(req);
 
     if (!parsed.ok) {
       return res.status(parsed.status).json({
-        response: parsed.error,
+        messages: [
+          {
+            role: "assistant",
+            content: parsed.error,
+          },
+        ],
       });
     }
 
     const { message } = parsed;
 
+    // =========================
+    // TRACE (solo interno)
+    // =========================
     trace = createTrace({
       message,
       tenant_id,
@@ -54,6 +71,9 @@ export default async function handler(req, res) {
       tenant_id,
     });
 
+    // =========================
+    // ENGINE
+    // =========================
     const result = await runEngine({
       message,
       req,
@@ -62,9 +82,17 @@ export default async function handler(req, res) {
       tenant_id,
     });
 
-    // 🔥 CLAVE: siempre "response"
+    // =========================
+    // RESPONSE (alineado con frontend)
+    // =========================
     return res.status(200).json({
-      response: result?.message || "No hay información disponible",
+      messages: [
+        {
+          role: "assistant",
+          content:
+            result?.message || "No hay información disponible",
+        },
+      ],
     });
 
   } catch (error) {
@@ -77,7 +105,12 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      response: "Error interno del sistema",
+      messages: [
+        {
+          role: "assistant",
+          content: "Error interno del sistema",
+        },
+      ],
     });
   }
 }
