@@ -47,12 +47,56 @@ REGLAS DE ASIGNACIÓN
 =========================
 
 - técnica → ficha
+- comparación técnica → ficha
 - intención de compra / recomendación → cliente
+- decisión (mejor, conviene, elegir) → cliente + comercial
 - atributos comerciales / descripción → comercial
 - objeciones / dudas / prejuicios → mitos
 
 - puede haber múltiples maps
-- si no aplica ninguno → maps = []
+- NO limitar a uno si aplica más de uno
+- NO sobre-asignar maps
+- incluir SOLO los necesarios para responder
+
+=========================
+PRIORIDAD
+=========================
+
+- Si hay decisión → incluir cliente
+- Si hay datos técnicos → incluir ficha
+- Si hay ambas → incluir ambos
+
+=========================
+AMBIGÜEDAD
+=========================
+
+- Si la intención no es clara:
+  → maps = []
+
+- Si el mensaje es demasiado corto o ambiguo:
+  → maps = []
+
+=========================
+REGLAS ESPECIALES
+=========================
+
+- preguntas de decisión pueden incluir múltiples maps (cliente + comercial)
+- preguntas de comparación NO son mitos
+- mitos NO requieren modelos
+
+=========================
+VALIDACIÓN
+=========================
+
+- maps solo puede contener valores válidos
+- no repetir valores
+
+=========================
+ORDEN
+=========================
+
+- Mantener orden consistente:
+  cliente → comercial → ficha → mitos
 
 =========================
 EJEMPLOS
@@ -77,7 +121,15 @@ Respuesta:
 Pregunta: "¿qué auto me recomiendas para familia?"
 Respuesta:
 {
-  "maps": ["cliente"]
+  "maps": ["cliente", "comercial"]
+}
+
+---
+
+Pregunta: "¿cuál consume menos entre T5 y T5 EVO?"
+Respuesta:
+{
+  "maps": ["ficha"]
 }
 
 ---
@@ -86,6 +138,14 @@ Pregunta: "es confiable la marca?"
 Respuesta:
 {
   "maps": ["mitos"]
+}
+
+---
+
+Pregunta: "T5 EVO?"
+Respuesta:
+{
+  "maps": []
 }
 
 ---
