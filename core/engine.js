@@ -42,7 +42,11 @@ export async function runEngine({
     { role: "user", content: message },
   ]);
 
+  console.log("LLM DECIDE RAW:", decideRaw?.content);
+
   const decision = safeParseJSON(decideRaw?.content);
+
+  console.log("DECISION:", decision);
 
   if (!decision || !Array.isArray(decision.maps)) {
     throw new Error("Invalid LLM JSON (decide)");
@@ -51,6 +55,7 @@ export async function runEngine({
   const maps = decision.maps;
 
   if (maps.length === 0) {
+    console.log("NO MAPS");
     return { message: "No hay información disponible" };
   }
 
@@ -61,7 +66,7 @@ export async function runEngine({
   }
 
   // =========================
-  // 2. decideMaps (backend)
+  // 2. decideMaps
   // =========================
   const decideResult = await runTool({
     name: "decideMaps",
@@ -73,11 +78,18 @@ export async function runEngine({
     tenant_id,
   });
 
+  console.log("MAPS FOR LLM2:", decideResult.maps);
+
+  // =========================
+  // 3. EXTRAER model_id
+  // =========================
   const modelIds =
     decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
 
+  console.log("MODEL IDS:", modelIds);
+
   // =========================
-  // 3. LLM → resolve models
+  // 4. LLM → resolve models
   // =========================
   const modelRaw = await callLLM([
     {
@@ -90,15 +102,12 @@ Formato:
   "models": []
 }
 
-Tarea:
-Seleccionar modelos mencionados en el mensaje.
-
 Reglas:
-- Usa SOLO la lista entregada
-- Si hay match → devolver model_id
-- Match flexible (ej: "t5 evo" → "t5_evo")
-- Si no hay modelo → []
-- NO inventar modelos
+- Usa MODELOS DISPONIBLES
+- Si el mensaje contiene uno → inclúyelo
+- Match flexible
+- Si no hay → []
+- No inventar modelos
 
 Ejemplo:
 "Mage" → ["mage"]
@@ -116,14 +125,18 @@ ${JSON.stringify(modelIds)}
     },
   ]);
 
+  console.log("LLM MODELS RAW:", modelRaw?.content);
+
   const parsedModels = safeParseJSON(modelRaw?.content);
 
   const models = Array.isArray(parsedModels?.models)
     ? parsedModels.models
     : [];
 
+  console.log("MODELS:", models);
+
   // =========================
-  // 4. execute
+  // 5. execute
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
@@ -136,6 +149,8 @@ ${JSON.stringify(modelIds)}
     tenant_id,
   });
 
+  console.log("EXECUTE RESULT:", executeResult);
+
   const data = executeResult?.data;
 
   const hasValidData =
@@ -143,16 +158,19 @@ ${JSON.stringify(modelIds)}
     data.some((x) => x && x.payload);
 
   if (!hasValidData) {
+    console.log("NO VALID DATA");
     return { message: "No hay información disponible" };
   }
 
   // =========================
-  // 5. render
+  // 6. render
   // =========================
   const finalMessage = await render({
     message,
     data,
   });
+
+  console.log("FINAL MESSAGE:", finalMessage);
 
   return {
     message: finalMessage || "No hay información disponible",
