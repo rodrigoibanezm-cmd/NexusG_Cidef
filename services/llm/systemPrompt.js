@@ -5,8 +5,7 @@ Responde SOLO en JSON válido.
 
 Formato obligatorio:
 {
-  "maps": [],
-  "models": []
+  "maps": []
 }
 
 =========================
@@ -44,12 +43,16 @@ CLASIFICACIÓN
 → maps = []
 
 =========================
-MODELS
+REGLAS DE ASIGNACIÓN
 =========================
 
-- Detectar modelos mencionados explícitamente
-- Normalizar a string simple (ej: "t5_evo", "mage")
-- Si no hay modelo claro → []
+- técnica → ficha
+- intención de compra / recomendación → cliente
+- atributos comerciales / descripción → comercial
+- objeciones / dudas / prejuicios → mitos
+
+- puede haber múltiples maps
+- si no aplica ninguno → maps = []
 
 =========================
 EJEMPLOS
@@ -58,8 +61,7 @@ EJEMPLOS
 Pregunta: "¿Qué motor tiene el Mage?"
 Respuesta:
 {
-  "maps": ["ficha"],
-  "models": ["mage"]
+  "maps": ["ficha"]
 }
 
 ---
@@ -67,8 +69,7 @@ Respuesta:
 Pregunta: "dame info del T5 EVO"
 Respuesta:
 {
-  "maps": ["comercial"],
-  "models": ["t5_evo"]
+  "maps": ["comercial"]
 }
 
 ---
@@ -76,8 +77,15 @@ Respuesta:
 Pregunta: "¿qué auto me recomiendas para familia?"
 Respuesta:
 {
-  "maps": ["cliente"],
-  "models": []
+  "maps": ["cliente"]
+}
+
+---
+
+Pregunta: "es confiable la marca?"
+Respuesta:
+{
+  "maps": ["mitos"]
 }
 
 ---
@@ -85,17 +93,14 @@ Respuesta:
 Pregunta: "clima hoy en Santiago"
 Respuesta:
 {
-  "maps": [],
-  "models": []
+  "maps": []
 }
 
 =========================
 REGLAS FINALES
 =========================
 
-- Siempre devolver ambos campos: maps y models
-- Ambos deben ser arrays
-- Puede haber múltiples maps
-- Puede haber múltiples models
-- Si no aplica ningún map → maps = []
+- maps siempre debe existir
+- maps siempre es array
+- puede estar vacío
 `;
