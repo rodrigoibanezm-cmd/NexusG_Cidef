@@ -6,6 +6,9 @@ import { render } from "../services/llm/render.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
+// =========================
+// helper: parse robusto
+// =========================
 function safeParseJSON(raw) {
   if (!raw) return null;
 
@@ -32,16 +35,14 @@ export async function runEngine({
   const baseUrl = `${protocol}://${req.headers.host}`;
 
   // =========================
-  // 1. LLM → maps
+  // 1. LLM → decide (maps)
   // =========================
-  const llmResponse = await callLLM([
+  const decideRaw = await callLLM([
     { role: "system", content: systemPrompt },
     { role: "user", content: message },
   ]);
 
-  console.log("LLM DECIDE RAW:", llmResponse?.content);
-
-  const decision = safeParseJSON(llmResponse?.content);
+  const decision = safeParseJSON(decideRaw?.content);
 
   if (!decision || !Array.isArray(decision.maps)) {
     throw new Error("Invalid LLM JSON (decide)");
@@ -60,7 +61,7 @@ export async function runEngine({
   }
 
   // =========================
-  // 2. decideMaps
+  // 2. decideMaps (backend)
   // =========================
   const decideResult = await runTool({
     name: "decideMaps",
@@ -72,20 +73,13 @@ export async function runEngine({
     tenant_id,
   });
 
-  console.log("MAPS FOR LLM2:", decideResult.maps);
-
-  // =========================
-  // 3. EXTRAER model_id
-  // =========================
   const modelIds =
     decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
 
-  console.log("MODEL IDS:", modelIds);
-
   // =========================
-  // 4. LLM → models
+  // 3. LLM → resolve models
   // =========================
-  const modelResponse = await callLLM([
+  const modelRaw = await callLLM([
     {
       role: "system",
       content: `
@@ -96,14 +90,18 @@ Formato:
   "models": []
 }
 
+Tarea:
+Seleccionar modelos mencionados en el mensaje.
+
 Reglas:
-- Usa MODELOS DISPONIBLES
-- Si el mensaje menciona uno → inclúyelo
-- Si no hay → []
-- No inventar modelos
+- Usa SOLO la lista entregada
+- Si hay match → devolver model_id
+- Match flexible (ej: "t5 evo" → "t5_evo")
+- Si no hay modelo → []
+- NO inventar modelos
 
 Ejemplo:
-"que motor tiene el mage" → ["mage"]
+"Mage" → ["mage"]
 `,
     },
     {
@@ -118,18 +116,14 @@ ${JSON.stringify(modelIds)}
     },
   ]);
 
-  console.log("LLM MODELS RAW:", modelResponse?.content);
-
-  const parsedModels = safeParseJSON(modelResponse?.content);
+  const parsedModels = safeParseJSON(modelRaw?.content);
 
   const models = Array.isArray(parsedModels?.models)
     ? parsedModels.models
     : [];
 
-  console.log("MODELS:", models);
-
   // =========================
-  // 5. execute
+  // 4. execute
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
@@ -142,8 +136,6 @@ ${JSON.stringify(modelIds)}
     tenant_id,
   });
 
-  console.log("EXECUTE RESULT:", executeResult);
-
   const data = executeResult?.data;
 
   const hasValidData =
@@ -151,21 +143,18 @@ ${JSON.stringify(modelIds)}
     data.some((x) => x && x.payload);
 
   if (!hasValidData) {
-    console.log("NO VALID DATA");
     return { message: "No hay información disponible" };
   }
 
   // =========================
-  // 6. render
+  // 5. render
   // =========================
   const finalMessage = await render({
     message,
     data,
   });
 
-  console.log("FINAL MESSAGE:", finalMessage);
-
   return {
-    message: finalMessage,
+    message: finalMessage || "No hay información disponible",
   };
 }
