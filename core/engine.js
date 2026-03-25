@@ -54,7 +54,7 @@ export async function runEngine({
     };
   }
 
-  const topic = maps[0]; // v1: primer map
+  const topic = maps[0]; // v1
 
   // =========================
   // 4. Validar topic
@@ -77,26 +77,30 @@ export async function runEngine({
   });
 
   // =========================
-  // 6. executePayload (models = [])
+  // 6. executePayload
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
     args: {
       topic,
-      models: [], // backend resuelve
+      models: [],
       trace_id: trace?.trace_id,
     },
     baseUrl,
     tenant_id,
   });
 
+  // 🔍 DEBUG CLAVE
+  console.log("EXECUTE RESULT:", executeResult);
+
   // =========================
-  // 7. Validar respuesta execute
+  // 7. Validar respuesta execute (FIX REAL)
   // =========================
   const data = executeResult?.data;
 
   const hasValidData =
-    Array.isArray(data) && data.some((x) => x !== null);
+    Array.isArray(data) &&
+    data.some((x) => x && x.payload);
 
   if (!hasValidData) {
     return {
