@@ -26,7 +26,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "method_not_allowed" });
+    return res.status(405).json({
+      message: "method_not_allowed",
+    });
   }
 
   let trace = null;
@@ -35,7 +37,7 @@ export default async function handler(req, res) {
     // =========================
     // AUTH OFF (piloto)
     // =========================
-    const tenant_id = null;
+    const tenant_id = null; // TODO: activar multi-tenant
 
     // =========================
     // INPUT
@@ -44,19 +46,14 @@ export default async function handler(req, res) {
 
     if (!parsed.ok) {
       return res.status(parsed.status).json({
-        messages: [
-          {
-            role: "assistant",
-            content: parsed.error,
-          },
-        ],
+        message: parsed.error,
       });
     }
 
     const { message } = parsed;
 
     // =========================
-    // TRACE (solo interno)
+    // TRACE
     // =========================
     trace = createTrace({
       message,
@@ -83,16 +80,28 @@ export default async function handler(req, res) {
     });
 
     // =========================
-    // RESPONSE (alineado con frontend)
+    // VALIDACIÓN ENGINE (CRÍTICO)
+    // =========================
+    if (!result || typeof result.message !== "string") {
+      console.error("INVALID ENGINE RESPONSE:", result);
+
+      return res.status(200).json({
+        message: "No hay información disponible",
+      });
+    }
+
+    // =========================
+    // LOG SEGURO
+    // =========================
+    console.log("CHAT RESPONSE:", {
+      length: result.message.length,
+    });
+
+    // =========================
+    // RESPONSE
     // =========================
     return res.status(200).json({
-      messages: [
-        {
-          role: "assistant",
-          content:
-            result?.message || "No hay información disponible",
-        },
-      ],
+      message: result.message,
     });
 
   } catch (error) {
@@ -105,12 +114,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      messages: [
-        {
-          role: "assistant",
-          content: "Error interno del sistema",
-        },
-      ],
+      message: "Error interno del sistema",
     });
   }
 }
