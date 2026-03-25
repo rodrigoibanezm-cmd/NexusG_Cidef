@@ -24,6 +24,8 @@ export async function runEngine({
     { role: "user", content: message },
   ]);
 
+  console.log("LLM DECIDE RAW:", llmResponse?.content);
+
   if (!llmResponse?.content) {
     throw new Error("LLM returned empty response");
   }
@@ -34,6 +36,8 @@ export async function runEngine({
   } catch {
     throw new Error("Invalid JSON from LLM");
   }
+
+  console.log("DECISION:", decision);
 
   if (!decision || !Array.isArray(decision.maps)) {
     throw new Error("Invalid LLM JSON structure");
@@ -64,11 +68,15 @@ export async function runEngine({
     tenant_id,
   });
 
+  console.log("MAPS FOR LLM2:", decideResult.maps);
+
   // =========================
   // 3. EXTRAER model_id
   // =========================
   const modelIds =
     decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
+
+  console.log("MODEL IDS:", modelIds);
 
   // =========================
   // 4. LLM → resolver models
@@ -89,13 +97,9 @@ Selecciona los modelos mencionados en el mensaje.
 
 Instrucciones:
 - Usa la lista de MODELOS DISPONIBLES
-- Si el mensaje contiene un modelo (ej: "mage") → devolver ["mage"]
+- Si el mensaje contiene un modelo → inclúyelo
 - Si no hay modelo → []
-- Match flexible (ej: "t5 evo" → "t5_evo")
-
-Prohibido:
-- inventar modelos
-- responder fuera del JSON
+- Match flexible
 
 Ejemplo:
 MENSAJE: "que motor tiene el mage"
@@ -114,6 +118,8 @@ ${JSON.stringify(modelIds)}
     },
   ]);
 
+  console.log("LLM MODELS RAW:", modelResponse?.content);
+
   let models = [];
 
   try {
@@ -122,8 +128,11 @@ ${JSON.stringify(modelIds)}
       models = parsed.models;
     }
   } catch {
+    console.log("MODEL PARSE ERROR");
     models = [];
   }
+
+  console.log("MODELS:", models);
 
   // =========================
   // 5. executePayload
@@ -139,6 +148,8 @@ ${JSON.stringify(modelIds)}
     tenant_id,
   });
 
+  console.log("EXECUTE RESULT:", executeResult);
+
   // =========================
   // 6. validar data
   // =========================
@@ -149,6 +160,7 @@ ${JSON.stringify(modelIds)}
     data.some((x) => x && x.payload);
 
   if (!hasValidData) {
+    console.log("NO VALID DATA");
     return { message: "No hay información disponible" };
   }
 
@@ -160,9 +172,8 @@ ${JSON.stringify(modelIds)}
     data,
   });
 
-  // =========================
-  // 8. respuesta final
-  // =========================
+  console.log("FINAL MESSAGE:", finalMessage);
+
   return {
     message: finalMessage,
   };
