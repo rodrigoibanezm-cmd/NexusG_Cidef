@@ -8,7 +8,6 @@ import {
   createTrace,
   addNote,
   setError,
-  toSerializableTrace,
 } from "../core/trace.js";
 
 export default async function handler(req, res) {
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
     const { message } = parsed;
 
     // =========================
-    // TRACE
+    // TRACE (solo interno)
     // =========================
     trace = createTrace({
       message,
@@ -77,14 +76,10 @@ export default async function handler(req, res) {
     });
 
     // =========================
-    // RESPONSE
+    // RESPONSE (LIMPIO)
     // =========================
     return res.status(200).json({
-      message: result.message,
-      trace:
-        process.env.NODE_ENV === "development"
-          ? toSerializableTrace(trace)
-          : null,
+      message: result.message
     });
 
   } catch (error) {
@@ -97,11 +92,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      message: "Error interno del sistema",
-      trace:
-        process.env.NODE_ENV === "development"
-          ? toSerializableTrace(trace)
-          : null,
+      message: "Error interno del sistema"
     });
   }
 }
