@@ -3,7 +3,7 @@
 import { callLLM } from "../llm/callLLM.js";
 
 // =========================
-// CLEAN JSON (robusto)
+// CLEAN JSON
 // =========================
 function cleanJSON(raw) {
   if (!raw) return raw;
@@ -12,11 +12,37 @@ function cleanJSON(raw) {
 }
 
 // =========================
-// SELECT MODELS
+// DETECCIÓN SIMPLE
+// =========================
+function isComparison(message) {
+  const m = message.toLowerCase();
+  return (
+    m.includes(" vs ") ||
+    m.includes(" versus ") ||
+    m.includes("entre") ||
+    m.includes("diferencia") ||
+    m.includes("mejor que")
+  );
+}
+
+// =========================
+// SELECT MODELS V2
 // =========================
 export async function selectModels({ message, maps }) {
-  // 1. universo válido (backend manda)
-  const modelIds = Object.values(maps || {})
+  const mapKeys = Object.keys(maps || {});
+
+  // 🔴 1. mitos → NO selector
+  if (mapKeys.includes("mitos")) {
+    return [];
+  }
+
+  // 🔴 2. ficha pura → NO selector
+  if (mapKeys.length === 1 && mapKeys[0] === "ficha") {
+    return [];
+  }
+
+  // universo válido
+  const modelIds = Object.values(maps)
     .flat()
     .map(m => m?.model_id)
     .filter(Boolean);
@@ -26,8 +52,6 @@ export async function selectModels({ message, maps }) {
   const prompt = `
 Eres un selector de modelos.
 
-Tu tarea es elegir los modelos MÁS relevantes para responder al usuario.
-
 =========================
 REGLAS
 =========================
@@ -35,15 +59,12 @@ REGLAS
 - Usa SOLO los modelos disponibles
 - NO inventar modelos
 - Elegir máximo 3 modelos
-- Elegir los MÁS relevantes (no todos)
-- Si no es claro → devolver []
+- Elegir los MÁS relevantes
 
-=========================
-CRITERIO
-=========================
-
-- Ajuste al uso (familia, trabajo, ciudad, precio, etc.)
-- Coherencia con la intención del usuario
+- IMPORTANTE:
+  - Si es comparación → elegir al menos 2 modelos
+  - Si es recomendación → elegir al menos 1 modelo
+  - NO devolver vacío si hay contexto suficiente
 
 =========================
 FORMATO
@@ -73,17 +94,26 @@ ${JSON.stringify(modelIds)}
 
     if (!Array.isArray(parsed.models)) return [];
 
-    // 2. backend valida (CRÍTICO)
-    const valid = parsed.models
-      .filter(m => modelIds.includes(m))
-      .slice(0, 3);
+    let valid = parsed.models.filter(m => modelIds.includes(m));
+
+    // 🔴 3. asegurar mínimo en comparación
+    if (isComparison(message) && valid.length < 2) {
+      valid = modelIds.slice(0, 2);
+    }
+
+    // 🔴 4. asegurar mínimo en decisión
+    if (!isComparison(message) && valid.length === 0) {
+      valid = modelIds.slice(0, 1);
+    }
+
+    const finalModels = valid.slice(0, 3);
 
     console.log("MODEL SELECTION:", {
-      input: message,
-      selected: valid,
+      message,
+      selected: finalModels,
     });
 
-    return valid;
+    return finalModels;
 
   } catch (e) {
     console.error("SELECT MODELS ERROR:", e);
