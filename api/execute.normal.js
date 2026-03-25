@@ -1,4 +1,4 @@
-// PATH: api/execute.normal.js
+// /api/execute.normal.js
 
 import { kv } from "@vercel/kv";
 
@@ -43,20 +43,40 @@ function normalizeModel(label) {
    ========================= */
 
 export default async function executeNormal(body) {
-  const { trace_id = null, topic, models = [] } = body || {};
+  const {
+    trace_id = null,
+    topic,
+    models = [],
+    tenant_id = null,
+  } = body || {};
 
+  // =========================
   // Validación
+  // =========================
   if (!topic || !RESOLVER_KEYS[topic] || !Array.isArray(models)) {
     return { error: "INVALID_INPUT" };
   }
 
-  // Resolver + prefijo
   const resolverKey = RESOLVER_KEYS[topic];
   const basePrefix = TOPIC_PREFIX[topic];
 
-  const resolver = await kv.get(resolverKey);
+  // =========================
+  // Resolver (tenant-aware + fallback)
+  // =========================
+  let resolver = null;
 
-  // Caso especial mitos
+  if (tenant_id) {
+    const tenantResolverKey = `${tenant_id}:${resolverKey}`;
+    resolver = await kv.get(tenantResolverKey);
+  }
+
+  if (!resolver) {
+    resolver = await kv.get(resolverKey);
+  }
+
+  // =========================
+  // Targets
+  // =========================
   const targets =
     topic === "mitos" && models.length === 0
       ? Object.keys(resolver || {})
@@ -64,6 +84,9 @@ export default async function executeNormal(body) {
 
   const data = [];
 
+  // =========================
+  // Loop principal
+  // =========================
   for (const raw of targets) {
     const canonical = normalizeModel(raw);
 
@@ -73,8 +96,17 @@ export default async function executeNormal(body) {
       const resolved = resolver[canonical];
 
       if (resolved) {
-        const kvKey = `${basePrefix}:${resolved}`;
-        payload = await kv.get(kvKey);
+        // 1. intentar tenant
+        if (tenant_id) {
+          const tenantKey = `${tenant_id}:${basePrefix}:${resolved}`;
+          payload = await kv.get(tenantKey);
+        }
+
+        // 2. fallback global
+        if (!payload) {
+          const globalKey = `${basePrefix}:${resolved}`;
+          payload = await kv.get(globalKey);
+        }
       }
     }
 
