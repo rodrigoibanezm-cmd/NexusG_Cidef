@@ -3,7 +3,7 @@
 import { callLLM } from "./callLLM.js";
 
 // =========================
-// CLEAN JSON (robusto)
+// CLEAN JSON
 // =========================
 function cleanJSON(raw) {
   if (!raw) return raw;
@@ -12,43 +12,21 @@ function cleanJSON(raw) {
 }
 
 // =========================
-// VALIDACIÓN ESTRUCTURA
+// VALIDACIÓN SUAVE
 // =========================
-function validateStructured(s) {
-  if (!s?.type) return false;
+function normalizeStructured(s) {
+  if (!s?.type) return { type: "partial", raw: s };
 
   switch (s.type) {
     case "decision":
-      return (
-        s.main_recommendation &&
-        typeof s.main_recommendation.model === "string"
-      );
-
     case "comparison":
-      return (
-        Array.isArray(s.models) &&
-        s.models.length > 0 &&
-        Array.isArray(s.differences) &&
-        s.differences.length > 0
-      );
-
     case "myth":
-      return (
-        typeof s.claim === "string" &&
-        typeof s.verdict === "string"
-      );
-
     case "partial":
-      return (
-        Array.isArray(s.available_data) &&
-        s.available_data.length > 0
-      );
-
     case "no_data":
-      return true;
+      return s;
 
     default:
-      return false;
+      return { type: "partial", raw: s };
   }
 }
 
@@ -81,15 +59,6 @@ TIPOS
 - no_data
 
 =========================
-PRIORIDAD DE INTENCIÓN
-=========================
-
-- Comparación → comparison
-- Objeción → myth
-- Recomendación → decision
-- Si no es claro → partial
-
-=========================
 REGLAS
 =========================
 
@@ -120,7 +89,7 @@ ${safeData}
 
   } catch (e) {
     console.error("STRUCTURED ERROR:", e);
-    return { type: "no_data" };
+    return { type: "partial" };
   }
 }
 
@@ -134,51 +103,22 @@ Eres un asesor comercial.
 Convierte el JSON en una respuesta clara y ordenada.
 
 =========================
-CONTRATO DE RENDER
+REGLAS
 =========================
 
 - SOLO usar información del JSON
-- No agregar contexto
-- No reinterpretar
-- No completar
 - No inventar
+- No agregar contexto
 
-- Si el JSON es limitado → la respuesta debe ser limitada
-
-=========================
-FORMATO OBLIGATORIO
-=========================
-
-- Usar títulos con "##"
-- Máximo 5 bullets por sección
+- Usar títulos "##"
+- Máximo 5 bullets
 - Frases cortas
-- NO usar párrafos largos
-- Incluir conclusión si existe en JSON
 
 =========================
-ESTRUCTURA POR TIPO
+FALLBACK
 =========================
 
-decision:
-- recomendación principal
-- alternativas
-- conclusión
-
-comparison:
-- diferencias claras
-- conclusión
-
-myth:
-- veredicto
-- explicación
-- puntos clave
-
-partial:
-- datos disponibles
-- limitaciones
-
-no_data:
-→ "No hay información disponible."
+Si la información es limitada, responde igual con lo disponible.
 
 JSON:
 ${JSON.stringify(structured)}
@@ -202,25 +142,19 @@ ${JSON.stringify(structured)}
 // MAIN
 // =========================
 export async function render({ message, data }) {
-  // corte temprano correcto
-  if (!data || Object.keys(data).length === 0) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
     return "No hay información disponible";
   }
 
-  const structured = await buildStructured({ message, data });
+  const structuredRaw = await buildStructured({ message, data });
+
+  const structured = normalizeStructured(structuredRaw);
 
   console.log("LLM TRACE:", {
     type: structured?.type,
     message,
   });
 
-  // validación fuerte
-  if (!validateStructured(structured)) {
-    console.error("INVALID STRUCTURED:", structured);
-    return "No hay información disponible";
-  }
-
-  // fallback contrato
   if (structured.type === "no_data") {
     return "No hay información disponible";
   }
