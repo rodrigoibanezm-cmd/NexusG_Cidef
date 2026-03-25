@@ -3,48 +3,56 @@
 import { callLLM } from "./callLLM.js";
 
 export async function render({ message, data }) {
-  // =========================
-  // Fallback sin data
-  // =========================
   if (!data) {
     return "No hay información disponible";
   }
 
-  // =========================
-  // Prompt de render (aislado)
-  // =========================
   const renderPrompt = `
 Responde usando SOLO la información entregada.
 
-Reglas:
-- No inventar
-- No usar conocimiento externo
-- Si falta información: "No hay información disponible"
+=========================
+REGLAS
+=========================
 
-Formato:
+- Prohibido inventar
+- Prohibido usar conocimiento externo
+- Si falta información → "No hay información disponible"
 
-Modo ficha:
-- encabezados markdown
+=========================
+FORMATO (OBLIGATORIO)
+=========================
+
+Elegir SOLO un modo:
+
+1) FICHA (si la pregunta es técnica)
+- encabezados markdown (##)
 - bullets
 - sin interpretación
 
-Modo interpretación:
+2) INTERPRETACIÓN (si es recomendación/uso)
 - máximo 5 bullets
 - directo a valor
+- sin explicación larga
 
-Reglas:
-- Elegir un modo dominante
-- técnica → ficha
-- decisión → interpretación
-- mantener estructura clara
+Prohibido:
+- mezclar modos
+- escribir párrafos largos
+- repetir información
+
+=========================
+DATA
+=========================
+
+Cada item tiene:
+- modelo
+- payload (información real)
+
+Usa SOLO payload.
 
 DATA:
 ${JSON.stringify(data)}
 `;
 
-  // =========================
-  // LLM render
-  // =========================
   const response = await callLLM([
     { role: "system", content: renderPrompt },
     { role: "user", content: message },
