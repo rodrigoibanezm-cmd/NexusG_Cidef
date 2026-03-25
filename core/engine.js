@@ -55,7 +55,7 @@ export async function runEngine({
   }
 
   // =========================
-  // 2. decideMaps (contexto)
+  // 2. decideMaps (maps reales)
   // =========================
   const decideResult = await runTool({
     name: "decideMaps",
@@ -67,8 +67,10 @@ export async function runEngine({
     tenant_id,
   });
 
+  console.log("MAPS FOR LLM2:", decideResult.maps);
+
   // =========================
-  // 3. LLM → resolver models
+  // 3. LLM → resolver models (CON MAPS)
   // =========================
   const modelResponse = await callLLM([
     {
@@ -82,13 +84,22 @@ Formato:
 }
 
 Reglas:
-- Detectar modelos mencionados en el mensaje
-- Considerar el contexto implícito de maps
+- Usa los MAPS para identificar modelos
+- Cruza el mensaje del usuario con los MAPS
 - Si no hay modelo claro → []
-- No inventar modelos
+- No inventar modelos fuera de los MAPS
 `,
     },
-    { role: "user", content: message },
+    {
+      role: "user",
+      content: `
+MENSAJE:
+${message}
+
+MAPS:
+${JSON.stringify(decideResult.maps || {})}
+`,
+    },
   ]);
 
   let models = [];
@@ -101,6 +112,8 @@ Reglas:
   } catch {
     models = [];
   }
+
+  console.log("MODELS:", models);
 
   // =========================
   // 4. executePayload
