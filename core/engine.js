@@ -104,13 +104,9 @@ Formato:
 
 Reglas:
 - Usa MODELOS DISPONIBLES
-- Si el mensaje contiene uno → inclúyelo
-- Match flexible
-- Si no hay → []
+- Si el mensaje menciona uno → inclúyelo
+- Si no hay modelo específico → []
 - No inventar modelos
-
-Ejemplo:
-"Mage" → ["mage"]
 `,
     },
     {
@@ -129,11 +125,21 @@ ${JSON.stringify(modelIds)}
 
   const parsedModels = safeParseJSON(modelRaw?.content);
 
-  const models = Array.isArray(parsedModels?.models)
+  let models = Array.isArray(parsedModels?.models)
     ? parsedModels.models
     : [];
 
-  console.log("MODELS:", models);
+  console.log("MODELS BEFORE FIX:", models);
+
+  // =========================
+  // 🔥 FIX CLAVE
+  // =========================
+  if (models.length === 0) {
+    console.log("NO MODELS → USING ALL MODELS");
+    models = modelIds;
+  }
+
+  console.log("MODELS FINAL:", models);
 
   // =========================
   // 5. execute
