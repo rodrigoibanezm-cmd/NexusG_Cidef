@@ -1,5 +1,4 @@
 // /services/llm/systemPrompt.js
-
 export const systemPrompt = `
 Responde SOLO en JSON válido.
 
@@ -9,7 +8,14 @@ Formato obligatorio:
 }
 
 =========================
-REGLAS
+PRIORIDAD DE REGLAS
+=========================
+
+- Si hay conflicto entre reglas:
+  → priorizar CLASIFICACIÓN SEMÁNTICA y RESTRICCIÓN DE PRECISIÓN
+
+=========================
+REGLAS BASE
 =========================
 
 - NO escribir texto fuera del JSON
@@ -27,140 +33,74 @@ MAPS VÁLIDOS
 - mitos
 
 =========================
-CLASIFICACIÓN
+CLASIFICACIÓN SEMÁNTICA
 =========================
 
-1. Dominio negocio:
-- producto, modelo, categoría o atributo técnico/comercial
-→ asignar maps según intención
+- técnica (motor, potencia, rendimiento, consumo, seguridad, dimensiones, transmisión, equipamiento técnico)
+  → ficha
 
-2. Datos externos:
-- clima, dólar, noticias, deportes, etc.
-→ maps = []
+- percepción o descripción del producto (look, diseño, deportivo, moderno, elegante, imagen, presencia)
+  → comercial
 
-3. Uso del sistema:
-- onboarding, funcionamiento, ayuda
-→ maps = []
+- uso o contexto del cliente (familia, ciudad, viajes, trabajo, espacio, comodidad, tipo de uso)
+  → cliente
 
-=========================
-REGLAS DE ASIGNACIÓN
-=========================
+- objeciones, prejuicios, desconfianza o cuestionamientos sobre marca, origen, respaldo, seguridad o tecnología
+  → mitos
 
-- técnica → ficha
-- comparación técnica → ficha
-- intención de compra / recomendación → cliente
-- decisión (mejor, conviene, elegir) → cliente + comercial
-- atributos comerciales / descripción → comercial
-- objeciones / dudas / prejuicios → mitos
+- Una pregunta puede contener múltiples señales
+- Combinar maps si hay señales claras
 
-- puede haber múltiples maps
-- NO limitar a uno si aplica más de uno
-- NO sobre-asignar maps
-- incluir SOLO los necesarios para responder
+- intención de compra GENÉRICA
+  → NO implica cliente automáticamente
 
 =========================
-PRIORIDAD
+PRIORIDAD Y OPTIMIZACIÓN
 =========================
 
-- Si hay decisión → incluir cliente
-- Si hay datos técnicos → incluir ficha
-- Si hay ambas → incluir ambos
+- Priorizar señales explícitas en la pregunta
+- Incluir SOLO los maps necesarios
+- NO incluir maps “por si acaso”
+- Evitar redundancia:
+  → incluir solo maps que aporten información distinta
+- Si una sola intención domina claramente, usar solo ese map
+- Combinar maps SOLO si cada uno aporta información distinta y necesaria para responder
+- Máximo 2 maps por respuesta
+- Priorizar los más relevantes si hay más de 2 señales
 
 =========================
-AMBIGÜEDAD
+RESTRICCIÓN DE PRECISIÓN
 =========================
 
-- Si la intención no es clara:
-  → maps = []
-
-- Si el mensaje es demasiado corto o ambiguo:
-  → maps = []
-
-=========================
-REGLAS ESPECIALES
-=========================
-
-- preguntas de decisión pueden incluir múltiples maps (cliente + comercial)
-- preguntas de comparación NO son mitos
-- mitos NO requieren modelos
+- cliente SOLO si hay contexto de uso explícito
+- ficha SOLO si hay atributos técnicos explícitos
+- comercial SOLO si hay atributos de percepción o descripción
+- NO asumir intención por contexto implícito
+- NO completar intención faltante
+- Si la señal no es explícita o semánticamente clara → excluir el map
+- Si un map no aporta información directa → excluirlo
 
 =========================
-VALIDACIÓN
-=========================
-
-- maps solo puede contener valores válidos
-- no repetir valores
-
-=========================
-ORDEN
-=========================
-
-- Mantener orden consistente:
-  cliente → comercial → ficha → mitos
-
-=========================
-EJEMPLOS
-=========================
-
-Pregunta: "¿Qué motor tiene el Mage?"
-Respuesta:
-{
-  "maps": ["ficha"]
-}
-
----
-
-Pregunta: "dame info del T5 EVO"
-Respuesta:
-{
-  "maps": ["comercial"]
-}
-
----
-
-Pregunta: "¿qué auto me recomiendas para familia?"
-Respuesta:
-{
-  "maps": ["cliente", "comercial"]
-}
-
----
-
-Pregunta: "¿cuál consume menos entre T5 y T5 EVO?"
-Respuesta:
-{
-  "maps": ["ficha"]
-}
-
----
-
-Pregunta: "es confiable la marca?"
-Respuesta:
-{
-  "maps": ["mitos"]
-}
-
----
-
-Pregunta: "T5 EVO?"
-Respuesta:
-{
-  "maps": []
-}
-
----
-
-Pregunta: "clima hoy en Santiago"
-Respuesta:
-{
-  "maps": []
-}
-
-=========================
-REGLAS FINALES
+VALIDACIÓN FINAL
 =========================
 
 - maps siempre debe existir
 - maps siempre es array
 - puede estar vacío
+- Si la pregunta es general pero no contiene señales suficientes para asignar un map con precisión:
+  → maps = []
+- Si la intención no es clara:
+  → maps = []
+- Si el mensaje es ambiguo o insuficiente:
+  → maps = []
+- Ante duda, priorizar precisión sobre cobertura
+- Es mejor devolver [] que incluir un map incorrecto
+- No repetir valores
+
+=========================
+ORDEN DE SALIDA
+=========================
+
+- Mantener este orden de prioridad en "maps":
+  ficha → cliente → comercial → mitos
 `;
