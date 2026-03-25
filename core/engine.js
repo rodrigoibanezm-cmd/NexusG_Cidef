@@ -6,6 +6,21 @@ import { render } from "../services/llm/render.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
+function safeParseJSON(raw) {
+  if (!raw) return null;
+
+  try {
+    const clean = raw
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    return JSON.parse(clean);
+  } catch {
+    return null;
+  }
+}
+
 export async function runEngine({
   message,
   req,
@@ -17,7 +32,7 @@ export async function runEngine({
   const baseUrl = `${protocol}://${req.headers.host}`;
 
   // =========================
-  // 1. LLM → maps (decide)
+  // 1. LLM → maps
   // =========================
   const llmResponse = await callLLM([
     { role: "system", content: systemPrompt },
@@ -26,21 +41,10 @@ export async function runEngine({
 
   console.log("LLM DECIDE RAW:", llmResponse?.content);
 
-  if (!llmResponse?.content) {
-    throw new Error("LLM returned empty response");
-  }
-
-  let decision;
-  try {
-    decision = JSON.parse(llmResponse.content);
-  } catch {
-    throw new Error("Invalid JSON from LLM");
-  }
-
-  console.log("DECISION:", decision);
+  const decision = safeParseJSON(llmResponse?.content);
 
   if (!decision || !Array.isArray(decision.maps)) {
-    throw new Error("Invalid LLM JSON structure");
+    throw new Error("Invalid LLM JSON (decide)");
   }
 
   const maps = decision.maps;
@@ -79,7 +83,7 @@ export async function runEngine({
   console.log("MODEL IDS:", modelIds);
 
   // =========================
-  // 4. LLM → resolver models
+  // 4. LLM → models
   // =========================
   const modelResponse = await callLLM([
     {
@@ -92,18 +96,14 @@ Formato:
   "models": []
 }
 
-Tarea:
-Selecciona los modelos mencionados en el mensaje.
-
-Instrucciones:
-- Usa la lista de MODELOS DISPONIBLES
-- Si el mensaje contiene un modelo → inclúyelo
-- Si no hay modelo → []
-- Match flexible
+Reglas:
+- Usa MODELOS DISPONIBLES
+- Si el mensaje menciona uno → inclúyelo
+- Si no hay → []
+- No inventar modelos
 
 Ejemplo:
-MENSAJE: "que motor tiene el mage"
-→ { "models": ["mage"] }
+"que motor tiene el mage" → ["mage"]
 `,
     },
     {
@@ -120,22 +120,16 @@ ${JSON.stringify(modelIds)}
 
   console.log("LLM MODELS RAW:", modelResponse?.content);
 
-  let models = [];
+  const parsedModels = safeParseJSON(modelResponse?.content);
 
-  try {
-    const parsed = JSON.parse(modelResponse.content);
-    if (Array.isArray(parsed.models)) {
-      models = parsed.models;
-    }
-  } catch {
-    console.log("MODEL PARSE ERROR");
-    models = [];
-  }
+  const models = Array.isArray(parsedModels?.models)
+    ? parsedModels.models
+    : [];
 
   console.log("MODELS:", models);
 
   // =========================
-  // 5. executePayload
+  // 5. execute
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
@@ -150,9 +144,6 @@ ${JSON.stringify(modelIds)}
 
   console.log("EXECUTE RESULT:", executeResult);
 
-  // =========================
-  // 6. validar data
-  // =========================
   const data = executeResult?.data;
 
   const hasValidData =
@@ -165,7 +156,7 @@ ${JSON.stringify(modelIds)}
   }
 
   // =========================
-  // 7. render
+  // 6. render
   // =========================
   const finalMessage = await render({
     message,
