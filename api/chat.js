@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
   try {
     // =========================
-    // AUTH (OFF)
+    // AUTH OFF (piloto)
     // =========================
     const tenant_id = null;
 
@@ -43,7 +43,9 @@ export default async function handler(req, res) {
     const parsed = parseBody(req);
 
     if (!parsed.ok) {
-      return res.status(parsed.status).json({ error: parsed.error });
+      return res.status(parsed.status).json({
+        error: parsed.error,
+      });
     }
 
     const { message } = parsed;
@@ -76,10 +78,10 @@ export default async function handler(req, res) {
     });
 
     // =========================
-    // RESPONSE (LIMPIO)
+    // RESPONSE
     // =========================
     return res.status(200).json({
-      message: result.message
+      message: result?.message || "No hay información disponible",
     });
 
   } catch (error) {
@@ -92,7 +94,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      message: "Error interno del sistema"
+      message: "Error interno del sistema",
     });
   }
 }
