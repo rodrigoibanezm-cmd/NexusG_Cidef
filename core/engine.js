@@ -2,6 +2,7 @@
 
 import { callLLM } from "../services/llm/callLLM.js";
 import { runTool } from "../services/tools.js";
+import { render } from "../services/llm/render.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
@@ -16,7 +17,7 @@ export async function runEngine({
   const baseUrl = `${protocol}://${req.headers.host}`;
 
   // =========================
-  // 1. LLM → JSON decisión
+  // 1. LLM → JSON decisión (solo maps)
   // =========================
   const llmResponse = await callLLM([
     { role: "system", content: systemPrompt },
@@ -38,16 +39,11 @@ export async function runEngine({
   // =========================
   // 2. Validación JSON
   // =========================
-  if (
-    !decision ||
-    !Array.isArray(decision.maps) ||
-    !Array.isArray(decision.models)
-  ) {
+  if (!decision || !Array.isArray(decision.maps)) {
     throw new Error("Invalid LLM JSON structure");
   }
 
   const maps = decision.maps;
-  const models = decision.models;
 
   // =========================
   // 3. Caso sin maps
@@ -68,13 +64,9 @@ export async function runEngine({
   }
 
   // =========================
-  // 5. decideMaps
+  // 5. decideMaps (contrato)
   // =========================
-  // Nota:
-  // decideMaps se ejecuta por validación y contrato de arquitectura.
-  // No se utiliza directamente en v1, pero asegura consistencia,
-  // trazabilidad y compatibilidad con el agente GPT.
-  const decideResult = await runTool({
+  await runTool({
     name: "decideMaps",
     args: {
       requested_maps: maps,
@@ -85,13 +77,13 @@ export async function runEngine({
   });
 
   // =========================
-  // 6. executePayload
+  // 6. executePayload (models = [])
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
     args: {
       topic,
-      models,
+      models: [], // backend resuelve
       trace_id: trace?.trace_id,
     },
     baseUrl,
@@ -113,9 +105,17 @@ export async function runEngine({
   }
 
   // =========================
-  // 8. Respuesta final
+  // 8. RENDER
+  // =========================
+  const finalMessage = await render({
+    message,
+    data,
+  });
+
+  // =========================
+  // 9. Respuesta final
   // =========================
   return {
-    message: JSON.stringify(executeResult),
+    message: finalMessage,
   };
 }
