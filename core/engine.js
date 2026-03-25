@@ -24,12 +24,11 @@ export async function runEngine({
     { role: "user", content: message },
   ]);
 
-  if (!llmResponse || !llmResponse.content) {
+  if (!llmResponse?.content) {
     throw new Error("LLM returned empty response");
   }
 
   let decision;
-
   try {
     decision = JSON.parse(llmResponse.content);
   } catch {
@@ -43,9 +42,7 @@ export async function runEngine({
   const maps = decision.maps;
 
   if (maps.length === 0) {
-    return {
-      message: "No hay información disponible",
-    };
+    return { message: "No hay información disponible" };
   }
 
   const topic = maps[0];
@@ -55,7 +52,7 @@ export async function runEngine({
   }
 
   // =========================
-  // 2. decideMaps (maps reales)
+  // 2. decideMaps
   // =========================
   const decideResult = await runTool({
     name: "decideMaps",
@@ -67,15 +64,11 @@ export async function runEngine({
     tenant_id,
   });
 
-  console.log("MAPS FOR LLM2:", decideResult.maps);
-
   // =========================
-  // 3. EXTRAER SOLO model_id
+  // 3. EXTRAER model_id
   // =========================
   const modelIds =
     decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
-
-  console.log("MODEL IDS:", modelIds);
 
   // =========================
   // 4. LLM → resolver models
@@ -91,12 +84,22 @@ Formato:
   "models": []
 }
 
-Reglas:
+Tarea:
+Selecciona los modelos mencionados en el mensaje.
+
+Instrucciones:
 - Usa la lista de MODELOS DISPONIBLES
-- Detecta si el usuario menciona alguno
-- Devuelve los model_id correspondientes
-- Si no hay modelo claro → []
-- No inventar modelos fuera de la lista
+- Si el mensaje contiene un modelo (ej: "mage") → devolver ["mage"]
+- Si no hay modelo → []
+- Match flexible (ej: "t5 evo" → "t5_evo")
+
+Prohibido:
+- inventar modelos
+- responder fuera del JSON
+
+Ejemplo:
+MENSAJE: "que motor tiene el mage"
+→ { "models": ["mage"] }
 `,
     },
     {
@@ -122,8 +125,6 @@ ${JSON.stringify(modelIds)}
     models = [];
   }
 
-  console.log("MODELS:", models);
-
   // =========================
   // 5. executePayload
   // =========================
@@ -138,10 +139,8 @@ ${JSON.stringify(modelIds)}
     tenant_id,
   });
 
-  console.log("EXECUTE RESULT:", executeResult);
-
   // =========================
-  // 6. Validar data
+  // 6. validar data
   // =========================
   const data = executeResult?.data;
 
@@ -150,9 +149,7 @@ ${JSON.stringify(modelIds)}
     data.some((x) => x && x.payload);
 
   if (!hasValidData) {
-    return {
-      message: "No hay información disponible",
-    };
+    return { message: "No hay información disponible" };
   }
 
   // =========================
