@@ -70,7 +70,15 @@ export async function runEngine({
   console.log("MAPS FOR LLM2:", decideResult.maps);
 
   // =========================
-  // 3. LLM → resolver models (CON MAPS)
+  // 3. EXTRAER SOLO model_id
+  // =========================
+  const modelIds =
+    decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
+
+  console.log("MODEL IDS:", modelIds);
+
+  // =========================
+  // 4. LLM → resolver models
   // =========================
   const modelResponse = await callLLM([
     {
@@ -84,10 +92,11 @@ Formato:
 }
 
 Reglas:
-- Usa los MAPS para identificar modelos
-- Cruza el mensaje del usuario con los MAPS
+- Usa la lista de MODELOS DISPONIBLES
+- Detecta si el usuario menciona alguno
+- Devuelve los model_id correspondientes
 - Si no hay modelo claro → []
-- No inventar modelos fuera de los MAPS
+- No inventar modelos fuera de la lista
 `,
     },
     {
@@ -96,8 +105,8 @@ Reglas:
 MENSAJE:
 ${message}
 
-MAPS:
-${JSON.stringify(decideResult.maps || {})}
+MODELOS DISPONIBLES:
+${JSON.stringify(modelIds)}
 `,
     },
   ]);
@@ -116,7 +125,7 @@ ${JSON.stringify(decideResult.maps || {})}
   console.log("MODELS:", models);
 
   // =========================
-  // 4. executePayload
+  // 5. executePayload
   // =========================
   const executeResult = await runTool({
     name: "executePayload",
@@ -132,7 +141,7 @@ ${JSON.stringify(decideResult.maps || {})}
   console.log("EXECUTE RESULT:", executeResult);
 
   // =========================
-  // 5. Validar data
+  // 6. Validar data
   // =========================
   const data = executeResult?.data;
 
@@ -147,7 +156,7 @@ ${JSON.stringify(decideResult.maps || {})}
   }
 
   // =========================
-  // 6. render
+  // 7. render
   // =========================
   const finalMessage = await render({
     message,
@@ -155,7 +164,7 @@ ${JSON.stringify(decideResult.maps || {})}
   });
 
   // =========================
-  // 7. respuesta final
+  // 8. respuesta final
   // =========================
   return {
     message: finalMessage,
