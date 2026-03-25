@@ -13,9 +13,19 @@ export function parseBody(req) {
 
   const { message } = body || {};
 
-  if (!message || typeof message !== "string" || !message.trim()) {
+  if (!message || typeof message !== "string") {
     return { ok: false, status: 400, error: "validation_error" };
   }
 
-  return { ok: true, message: message.trim() };
+  const clean = message.trim().replace(/\s+/g, " ");
+
+  if (clean.length === 0) {
+    return { ok: false, status: 400, error: "empty_message" };
+  }
+
+  const MAX_LENGTH = 2000;
+
+  const safe = clean.slice(0, MAX_LENGTH);
+
+  return { ok: true, message: safe };
 }
