@@ -2,7 +2,6 @@
 
 import { systemPrompt } from "../services/llm/systemPrompt.js";
 import { runEngine } from "../core/engine.js";
-import { validateAuth } from "../core/auth.js";
 import { parseBody } from "../core/parseBody.js";
 
 import {
@@ -35,15 +34,9 @@ export default async function handler(req, res) {
 
   try {
     // =========================
-    // AUTH
+    // AUTH (OFF)
     // =========================
-    const auth = await validateAuth(req);
-
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
-    const tenant_id = auth.tenant_id;
+    const tenant_id = null;
 
     // =========================
     // INPUT
