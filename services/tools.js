@@ -9,18 +9,6 @@ const routes = {
 };
 
 // =========================
-// MULTI-TENANT
-// =========================
-function resolveModels(models = [], tenant_id) {
-  if (!Array.isArray(models)) return [];
-
-  // si no hay tenant, no modificamos
-  if (!tenant_id) return models;
-
-  return models.map((m) => `${tenant_id}:${m}`);
-}
-
-// =========================
 // TOOL EXECUTION
 // =========================
 export async function runTool({ name, args = {}, baseUrl, tenant_id }) {
@@ -33,12 +21,9 @@ export async function runTool({ name, args = {}, baseUrl, tenant_id }) {
   const url = `${baseUrl}${path}`;
 
   // =========================
-  // INJECT TENANT (clean)
+  // ARGS LIMPIOS (sin tenant en models)
   // =========================
-  const resolvedArgs = {
-    ...args,
-    models: resolveModels(args.models, tenant_id),
-  };
+  const resolvedArgs = { ...args };
 
   const res = await fetch(url, {
     method: "POST",
