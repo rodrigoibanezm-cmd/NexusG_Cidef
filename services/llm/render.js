@@ -3,68 +3,91 @@
 import { callLLM } from "./callLLM.js";
 
 // =========================
-// CLEAN JSON
+// MAIN RENDER
 // =========================
-function cleanJSON(raw) {
-  if (!raw) return raw;
-  const match = raw.match(/\{[\s\S]*\}/);
-  return match ? match[0] : raw;
-}
-
-// =========================
-// VALIDACIÓN SUAVE
-// =========================
-function normalizeStructured(s) {
-  if (!s?.type) return { type: "partial", raw: s };
-
-  switch (s.type) {
-    case "decision":
-    case "comparison":
-    case "myth":
-    case "partial":
-    case "no_data":
-      return s;
-
-    default:
-      return { type: "partial", raw: s };
+export async function render({ message, data }) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return "No hay información disponible";
   }
-}
 
-// =========================
-// STEP 1: JSON estructurado
-// =========================
-async function buildStructured({ message, data }) {
   const prompt = `
 Eres un asesor comercial experto en vehículos.
 
-Responde SOLO con JSON válido.
+=========================
+PRIORIDAD DE REGLAS
+=========================
+
+- El CONTRATO DE VERDAD tiene prioridad sobre todo
+- Si cualquier otra instrucción entra en conflicto → ignorarla
 
 =========================
 CONTRATO DE VERDAD
 =========================
 
-- Usa SOLO DATA
+- Usa SOLO la DATA entregada
+- No inventar
 - No inferir
 - No completar
-- Si un dato no está → no existe
+- Si un dato no está en DATA → no existe
+
+- Si NO hay información suficiente →
+  responde EXACTAMENTE:
+  "No hay información disponible"
 
 =========================
-TIPOS
+RESTRICCIÓN DE MODELO
 =========================
 
-- decision
-- comparison
-- myth
-- partial
-- no_data
+- Usa SOLO los modelos presentes en DATA
+- NO mezclar modelos si DATA viene filtrada
+- Si hay múltiples modelos, separarlos claramente
 
 =========================
-REGLAS
+MODO DE RESPUESTA
 =========================
 
-- Si no hay datos → no_data
-- Si incompleto → partial
-- No mezclar tipos
+- Si la pregunta es técnica:
+  → usar formato ficha (sin interpretación)
+
+- Si es recomendación o uso:
+  → máximo 5 bullets, enfocado en decisión
+
+- NO mezclar modos
+
+=========================
+FILTRADO DE DATA
+=========================
+
+- NO usar:
+  - preguntas_tipicas
+  - objeciones
+  - que_no_se_debe_prometer
+
+- PRIORIZAR:
+  - beneficios clave
+  - uso del vehículo
+  - atributos relevantes a la pregunta
+
+- NO resumir escenarios completos
+- EXTRAER solo ideas clave
+
+=========================
+FORMATO
+=========================
+
+- Usar títulos con ##
+- Usar bullets
+- Máximo 3–5 bullets por sección
+- Frases cortas
+- Sin párrafos largos
+
+=========================
+REGLA CRÍTICA
+=========================
+
+- Si la pregunta requiere datos que NO están en DATA:
+  → responder EXACTAMENTE:
+  "No hay información disponible"
 `;
 
   try {
@@ -84,82 +107,10 @@ ${safeData}
       },
     ]);
 
-    const parsed = JSON.parse(cleanJSON(res.content));
-    return parsed;
-
-  } catch (e) {
-    console.error("STRUCTURED ERROR:", e);
-    return { type: "partial" };
-  }
-}
-
-// =========================
-// STEP 2: TEXTO FINAL
-// =========================
-async function buildText({ structured }) {
-  const prompt = `
-Eres un asesor comercial.
-
-Convierte el JSON en una respuesta clara y ordenada.
-
-=========================
-REGLAS
-=========================
-
-- SOLO usar información del JSON
-- No inventar
-- No agregar contexto
-
-- Usar títulos "##"
-- Máximo 5 bullets
-- Frases cortas
-
-=========================
-FALLBACK
-=========================
-
-Si la información es limitada, responde igual con lo disponible.
-
-JSON:
-${JSON.stringify(structured)}
-`;
-
-  try {
-    const res = await callLLM([
-      { role: "system", content: prompt },
-      { role: "user", content: "Renderiza el JSON" },
-    ]);
-
-    return res.content;
+    return res.content || "No hay información disponible";
 
   } catch (e) {
     console.error("RENDER ERROR:", e);
-    return "Error temporal, intenta nuevamente";
-  }
-}
-
-// =========================
-// MAIN
-// =========================
-export async function render({ message, data }) {
-  if (!data || !Array.isArray(data) || data.length === 0) {
     return "No hay información disponible";
   }
-
-  const structuredRaw = await buildStructured({ message, data });
-
-  const structured = normalizeStructured(structuredRaw);
-
-  console.log("LLM TRACE:", {
-    type: structured?.type,
-    message,
-  });
-
-  if (structured.type === "no_data") {
-    return "No hay información disponible";
-  }
-
-  const finalText = await buildText({ structured });
-
-  return finalText || "No hay información disponible";
 }
