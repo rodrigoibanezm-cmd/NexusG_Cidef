@@ -3,6 +3,7 @@
 import { callLLM } from "../services/llm/callLLM.js";
 import { runTool } from "../services/tools.js";
 import { render } from "../services/llm/render.js";
+import { selectModels } from "../services/selector/selectModels.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 
@@ -34,151 +35,108 @@ export async function runEngine({
   const protocol = req.headers["x-forwarded-proto"] || "https";
   const baseUrl = `${protocol}://${req.headers.host}`;
 
-  // =========================
-  // 1. LLM → decide (maps)
-  // =========================
-  const decideRaw = await callLLM([
-    { role: "system", content: systemPrompt },
-    { role: "user", content: message },
-  ]);
+  try {
+    // =========================
+    // 1. LLM → decide (maps)
+    // =========================
+    const decideRaw = await callLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message },
+    ]);
 
-  console.log("LLM DECIDE RAW:", decideRaw?.content);
+    console.log("LLM DECIDE RAW:", decideRaw?.content);
 
-  const decision = safeParseJSON(decideRaw?.content);
+    const decision = safeParseJSON(decideRaw?.content);
 
-  console.log("DECISION:", decision);
+    console.log("DECISION:", decision);
 
-  if (!decision || !Array.isArray(decision.maps)) {
-    throw new Error("Invalid LLM JSON (decide)");
+    if (!decision || !Array.isArray(decision.maps)) {
+      throw new Error("Invalid LLM JSON (decide)");
+    }
+
+    const maps = decision.maps;
+
+    if (maps.length === 0) {
+      console.log("NO MAPS");
+      return { message: "No hay información disponible" };
+    }
+
+    const topic = maps[0];
+
+    if (!VALID_TOPICS.includes(topic)) {
+      throw new Error("Invalid topic");
+    }
+
+    // =========================
+    // 2. decideMaps (backend)
+    // =========================
+    const decideResult = await runTool({
+      name: "decideMaps",
+      args: {
+        requested_maps: maps,
+        trace_id: trace?.trace_id,
+      },
+      baseUrl,
+      tenant_id,
+    });
+
+    console.log("MAPS FOR LLM2:", decideResult.maps);
+
+    const mapsData = decideResult?.maps || {};
+
+    // =========================
+    // 3. SELECT MODELS (NUEVO)
+    // =========================
+    const models = await selectModels({
+      message,
+      maps: mapsData,
+    });
+
+    console.log("SELECTED MODELS:", models);
+
+    // =========================
+    // 4. execute
+    // =========================
+    const executeResult = await runTool({
+      name: "executePayload",
+      args: {
+        topic,
+        models,
+        trace_id: trace?.trace_id,
+      },
+      baseUrl,
+      tenant_id,
+    });
+
+    console.log("EXECUTE RESULT:", executeResult);
+
+    const data = executeResult?.data;
+
+    const hasValidData =
+      Array.isArray(data) &&
+      data.some((x) => x && x.payload);
+
+    if (!hasValidData) {
+      console.log("NO VALID DATA");
+      return { message: "No hay información disponible" };
+    }
+
+    // =========================
+    // 5. render
+    // =========================
+    const finalMessage = await render({
+      message,
+      data,
+    });
+
+    console.log("FINAL MESSAGE:", finalMessage);
+
+    return {
+      message: finalMessage || "No hay información disponible",
+    };
+
+  } catch (e) {
+    console.error("ENGINE ERROR:", e);
+    return { message: "Error interno del sistema" };
   }
-
-  const maps = decision.maps;
-
-  if (maps.length === 0) {
-    console.log("NO MAPS");
-    return { message: "No hay información disponible" };
-  }
-
-  const topic = maps[0];
-
-  if (!VALID_TOPICS.includes(topic)) {
-    throw new Error("Invalid topic");
-  }
-
-  // =========================
-  // 2. decideMaps
-  // =========================
-  const decideResult = await runTool({
-    name: "decideMaps",
-    args: {
-      requested_maps: maps,
-      trace_id: trace?.trace_id,
-    },
-    baseUrl,
-    tenant_id,
-  });
-
-  console.log("MAPS FOR LLM2:", decideResult.maps);
-
-  // =========================
-  // 3. EXTRAER model_id
-  // =========================
-  const modelIds =
-    decideResult?.maps?.[topic]?.map((m) => m.model_id) || [];
-
-  console.log("MODEL IDS:", modelIds);
-
-  // =========================
-  // 4. LLM → resolve models
-  // =========================
-  const modelRaw = await callLLM([
-    {
-      role: "system",
-      content: `
-Responde SOLO en JSON válido.
-
-Formato:
-{
-  "models": []
-}
-
-Reglas:
-- Usa MODELOS DISPONIBLES
-- Si el mensaje menciona uno → inclúyelo
-- Si no hay modelo específico → []
-- No inventar modelos
-`,
-    },
-    {
-      role: "user",
-      content: `
-MENSAJE:
-${message}
-
-MODELOS DISPONIBLES:
-${JSON.stringify(modelIds)}
-`,
-    },
-  ]);
-
-  console.log("LLM MODELS RAW:", modelRaw?.content);
-
-  const parsedModels = safeParseJSON(modelRaw?.content);
-
-  let models = Array.isArray(parsedModels?.models)
-    ? parsedModels.models
-    : [];
-
-  console.log("MODELS BEFORE FIX:", models);
-
-  // =========================
-  // 🔥 FIX CLAVE
-  // =========================
-  if (models.length === 0) {
-    console.log("NO MODELS → USING ALL MODELS");
-    models = modelIds;
-  }
-
-  console.log("MODELS FINAL:", models);
-
-  // =========================
-  // 5. execute
-  // =========================
-  const executeResult = await runTool({
-    name: "executePayload",
-    args: {
-      topic,
-      models,
-      trace_id: trace?.trace_id,
-    },
-    baseUrl,
-    tenant_id,
-  });
-
-  console.log("EXECUTE RESULT:", executeResult);
-
-  const data = executeResult?.data;
-
-  const hasValidData =
-    Array.isArray(data) &&
-    data.some((x) => x && x.payload);
-
-  if (!hasValidData) {
-    console.log("NO VALID DATA");
-    return { message: "No hay información disponible" };
-  }
-
-  // =========================
-  // 6. render
-  // =========================
-  const finalMessage = await render({
-    message,
-    data,
-  });
-
-  console.log("FINAL MESSAGE:", finalMessage);
-
-  return {
-    message: finalMessage || "No hay información disponible",
-  };
 }
