@@ -26,29 +26,36 @@ function isComparison(message) {
 }
 
 // =========================
-// SELECT MODELS V2
+// NORMALIZADOR
+// =========================
+function normalize(s) {
+  return (s || "").toLowerCase().replace(/\s+/g, "");
+}
+
+// =========================
+// SELECT MODELS V3
 // =========================
 export async function selectModels({ message, maps }) {
   const mapKeys = Object.keys(maps || {});
 
-  // 🔴 1. mitos → NO selector
+  // 🔴 mitos → no selector (por ahora)
   if (mapKeys.includes("mitos")) {
     return [];
   }
 
-  // 🔴 2. ficha pura → NO selector
-  if (mapKeys.length === 1 && mapKeys[0] === "ficha") {
-    return [];
-  }
-
-  // universo válido
+  // =========================
+  // UNIVERSO BACKEND
+  // =========================
   const modelIds = Object.values(maps)
     .flat()
-    .map(m => m?.model_id)
+    .map((m) => m?.model_id)
     .filter(Boolean);
 
   if (!modelIds.length) return [];
 
+  // =========================
+  // LLM PROPONE
+  // =========================
   const prompt = `
 Eres un selector de modelos.
 
@@ -94,14 +101,31 @@ ${JSON.stringify(modelIds)}
 
     if (!Array.isArray(parsed.models)) return [];
 
-    let valid = parsed.models.filter(m => modelIds.includes(m));
+    const candidates = parsed.models;
 
-    // 🔴 3. asegurar mínimo en comparación
+    // =========================
+    // VALIDACIÓN BACKEND
+    // =========================
+    let valid = candidates.filter((c) =>
+      modelIds.some((m) => normalize(m) === normalize(c))
+    );
+
+    // =========================
+    // FALLBACK CONTROLADO
+    // =========================
+    if (valid.length === 0) {
+      if (modelIds.length === 1) {
+        valid = [modelIds[0]];
+      }
+    }
+
+    // =========================
+    // REGLAS DE NEGOCIO
+    // =========================
     if (isComparison(message) && valid.length < 2) {
       valid = modelIds.slice(0, 2);
     }
 
-    // 🔴 4. asegurar mínimo en decisión
     if (!isComparison(message) && valid.length === 0) {
       valid = modelIds.slice(0, 1);
     }
@@ -110,6 +134,8 @@ ${JSON.stringify(modelIds)}
 
     console.log("MODEL SELECTION:", {
       message,
+      candidates,
+      universe: modelIds,
       selected: finalModels,
     });
 
