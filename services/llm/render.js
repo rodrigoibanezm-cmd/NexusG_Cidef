@@ -3,6 +3,7 @@
 import { callLLM } from "./callLLM.js";
 import { getPrompt } from "./promptSelector.js";
 import { getBehaviorBlock } from "./behaviorService.js";
+import { baseRenderBehavior } from "./prompts/baseRender.js";
 
 // =========================
 // MAIN RENDER
@@ -26,12 +27,20 @@ export async function render({
   const { prompt, type } = getPrompt(maps);
 
   // =========================
-  // BEHAVIOR
+  // BEHAVIOR (opcional / débil)
   // =========================
 
   const behaviorBlock = await getBehaviorBlock(tenantId);
 
-  const systemPrompt = [behaviorBlock, prompt]
+  // =========================
+  // SYSTEM PROMPT (con jerarquía)
+  // =========================
+
+  const systemPrompt = [
+    baseRenderBehavior, // identidad (manda)
+    prompt,             // tarea específica
+    behaviorBlock       // opcional (no debe competir)
+  ]
     .filter(Boolean)
     .join("\n");
 
