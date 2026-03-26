@@ -24,13 +24,13 @@ ${baseTruth}
 
 OBJETIVO:
 - Ayudar a decidir entre opciones
-- No listar todo, solo lo relevante
+- Priorizar claramente las mejores alternativas
+- Indicar cuál opción es mejor según la necesidad del usuario
 
 FORMATO:
 - Usar títulos con ##
 - Usar bullets
-- Máximo 5 bullets TOTAL
-- No exceder 5 bullets bajo ninguna circunstancia
+- Máximo 5 bullets por sección
 - Frases cortas
 
 SELECCIÓN:
@@ -40,16 +40,32 @@ SELECCIÓN:
 - NO listar todos los modelos disponibles
 - Cada modelo debe representar una opción distinta
 
+ESTRUCTURA:
+
+- Presentar los modelos ordenados de mejor a peor según la intención del usuario
+
+- Cada modelo debe incluir:
+  - Qué lo hace adecuado
+  - Para quién es (tipo de uso o familia)
+
 CONTENIDO:
 - Destacar lo clave para decidir
 - NO describir todo
 - NO usar escenarios largos
 
 CIERRE:
-- Incluir "## Recomendación rápida" SOLO si aplica
-- Incluir SOLO modelos que aporten una opción distinta
-- No forzar cantidad
+
+- Incluir una sección final SOLO si aplica:
+
+## Recomendación rápida
+
+- Si necesitas X → Modelo A
+- Si priorizas Y → Modelo B
+- Si buscas Z → Modelo C
+
+- Traducir la decisión a escenarios concretos
 - No repetir argumentos
+- No forzar cantidad de modelos
 `;
 
 const promptFicha = `
@@ -65,7 +81,7 @@ FORMATO:
 - Usar títulos con ##
 - Usar bullets
 - Máximo 5 bullets TOTAL
-- No exceder 5 bullets bajo ninguna circunstancia
+- No exceder bajo ninguna circunstancia
 - Frases cortas
 
 CONTENIDO:
@@ -85,7 +101,7 @@ OBJETIVO:
 FORMATO:
 - Usar bullets
 - Máximo 5 bullets
-- No exceder 5 bullets bajo ninguna circunstancia
+- No exceder bajo ninguna circunstancia
 - Frases claras y directas
 
 CONTENIDO:
@@ -105,16 +121,31 @@ Eres un asesor de vehículos.
 
 ${baseTruth}
 
-- Responder breve y claro
+OBJETIVO:
+- Ayudar al usuario a entender cómo puede usar el sistema o aclarar su pregunta
+
+FORMATO:
 - Máximo 5 bullets
-- No exceder 5 bullets
+- Frases claras
+
+COMPORTAMIENTO:
+
+- Si la pregunta es sobre cómo usar el sistema:
+  → explicar con ejemplos concretos
+
+- Si la pregunta es ambigua:
+  → pedir aclaración
+
+- No inventar capacidades
 `;
 
 // =========================
 // SELECTOR DE PROMPT
 // =========================
 
-function getPrompt(maps = []) {
+function getPrompt(mapsInput) {
+  let maps = Array.isArray(mapsInput) ? mapsInput : [];
+
   // mitos domina salvo que haya decisión explícita
   if (
     maps.includes("mitos") &&
@@ -129,7 +160,7 @@ function getPrompt(maps = []) {
     return { prompt: promptFicha, type: "ficha" };
   }
 
-  // decisión (cliente/comercial domina)
+  // decisión domina
   if (maps.includes("cliente") || maps.includes("comercial")) {
     return { prompt: promptDecision, type: "decision" };
   }
@@ -154,7 +185,7 @@ export async function render({ message, data, maps = [] }) {
   const { prompt, type } = getPrompt(maps);
 
   console.log("RENDER INPUT:", {
-    message_length: message.length,
+    message_length: message?.length || 0,
     maps,
     data_count: data.length,
     prompt_type: type,
