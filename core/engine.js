@@ -1,137 +1,196 @@
-// /services/llm/render.js
+// /core/engine.js
 
 import { callLLM } from "../services/llm/callLLM.js";
-import { getPrompt } from "../services/llm/promptSelector.js";
-import { getBehaviorBlock } from "../services/llm/behaviorService.js";
+import { runTool } from "../services/tools.js";
+import { render } from "../services/llm/render.js";
+import { selectModels } from "../services/selector/selectModels.js";
 
+import { addNote } from "./trace.js";
+
+const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 const NO_DATA_MESSAGE = "No hay información disponible.";
 
 // =========================
-// HELPERS
+// PARSE JSON ROBUSTO (simple)
 // =========================
-
-function buildSafeData(data, maxItems = 8) {
-  if (!Array.isArray(data)) return "[]";
-
-  const validItems = data.filter((x) => x && x.payload);
-  return JSON.stringify(validItems.slice(0, maxItems));
-}
-
-function isWeakOutput(text) {
-  if (typeof text !== "string") return true;
-
-  const trimmed = text.trim();
-  if (!trimmed) return true;
-  if (trimmed.length < 24) return true;
-
-  const weakPatterns = [
-    "depende",
-    "no sé",
-    "no lo sé",
-    "ambas son buenas opciones",
-  ];
-
-  const normalized = trimmed.toLowerCase();
-  return weakPatterns.includes(normalized);
-}
-
-// =========================
-// MAIN RENDER
-// =========================
-
-export async function render({
-  message,
-  data,
-  maps = [],
-  tenantId = "default",
-}) {
-  // =========================
-  // HARD FALLBACK
-  // =========================
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    return NO_DATA_MESSAGE;
-  }
-
-  // =========================
-  // PROMPT
-  // =========================
-  const { prompt, type } = getPrompt(maps);
-
-  const decisionBlock = `
-REGLAS DE RESPUESTA:
-
-- Si el usuario está comparando, evaluando o pidiendo recomendación:
-  → debes cerrar con una recomendación clara.
-
-- Evitar:
-  - "depende"
-  - respuestas neutrales
-  - listar opciones sin conclusión
-
-- Priorizar:
-  - el criterio principal del usuario
-  - el ganador claro
-  - contraste breve
-  - cierre directo
-
-- Si hay un ganador claro, debes recomendar solo una opción al final.
-- Solo mostrar más de una opción si realmente hay empate.
-`;
-
-  // =========================
-  // BEHAVIOR
-  // =========================
-  const behaviorBlock = await getBehaviorBlock(tenantId);
-
-  const systemPrompt = [
-    behaviorBlock,
-    decisionBlock,
-    prompt,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  // =========================
-  // LOG INPUT
-  // =========================
-  console.log("RENDER INPUT:", {
-    message_length: message?.length || 0,
-    maps,
-    data_count: data.length,
-    prompt_type: type,
-    tenant_id: tenantId,
-    has_behavior: !!behaviorBlock,
-  });
+function safeParseJSON(raw) {
+  if (!raw) return null;
 
   try {
-    const safeData = buildSafeData(data, 8);
+    return JSON.parse(raw);
+  } catch {}
 
-    const res = await callLLM([
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+
+  if (start !== -1 && end !== -1 && end > start) {
+    const slice = raw.slice(start, end + 1);
+    try {
+      return JSON.parse(slice);
+    } catch {}
+  }
+
+  return null;
+}
+
+// =========================
+// ENGINE
+// =========================
+export async function runEngine({
+  message,
+  req,
+  systemPrompt,
+  trace,
+  tenant_id,
+}) {
+  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const baseUrl = `${protocol}://${req.headers.host}`;
+
+  try {
+    console.log("ENGINE START:", { message });
+
+    // =========================
+    // 1. DECIDE
+    // =========================
+    const decideRaw = await callLLM([
       { role: "system", content: systemPrompt },
-      {
-        role: "user",
-        content: `
-MENSAJE:
-${message}
-
-DATA:
-${safeData}
-`,
-      },
+      { role: "user", content: message },
     ]);
 
-    const output = res?.content;
+    console.log("DECIDE RAW:", decideRaw?.content);
 
-    console.log("RENDER OUTPUT LENGTH:", output?.length);
+    const decision = safeParseJSON(decideRaw?.content);
 
-    if (isWeakOutput(output)) {
-      return NO_DATA_MESSAGE;
+    if (!decision || !Array.isArray(decision.maps)) {
+      throw new Error("INVALID_DECIDE_JSON");
     }
 
-    return output.trim();
+    const maps = [...new Set(
+      decision.maps.filter((x) => VALID_TOPICS.includes(x))
+    )];
+
+    console.log("MAPS DETECTED:", maps);
+    addNote(trace, "maps_detected", { maps });
+
+    if (maps.length === 0) {
+      console.log("EARLY EXIT: no_maps");
+      addNote(trace, "early_exit", { reason: "no_maps" });
+
+      return { message: NO_DATA_MESSAGE };
+    }
+
+    // =========================
+    // 2. DECIDE MAPS
+    // =========================
+    const decideResult = await runTool({
+      name: "decideMaps",
+      args: {
+        requested_maps: maps,
+        trace_id: trace?.trace_id,
+      },
+      baseUrl,
+      tenant_id,
+    });
+
+    const mapsData = decideResult?.maps || {};
+
+    console.log("MAPS DATA KEYS:", Object.keys(mapsData));
+
+    addNote(trace, "maps_resolved", {
+      keys: Object.keys(mapsData),
+    });
+
+    // =========================
+    // 3. SELECT MODELS
+    // =========================
+    let models = [];
+
+    try {
+      models = await selectModels({
+        message,
+        maps: mapsData,
+      });
+    } catch (e) {
+      console.log("SELECTOR ERROR:", e?.message);
+      models = [];
+    }
+
+    console.log("MODELS SELECTED:", models);
+
+    addNote(trace, "models_selected", {
+      count: models.length,
+      models: models.slice(0, 3),
+    });
+
+    // =========================
+    // 4. EXECUTE MULTI-TOPIC
+    // =========================
+    let allData = [];
+
+    for (const topic of maps) {
+      console.log("EXECUTE TOPIC:", topic);
+
+      const executeResult = await runTool({
+        name: "executePayload",
+        args: {
+          topic,
+          models,
+          trace_id: trace?.trace_id,
+        },
+        baseUrl,
+        tenant_id,
+      });
+
+      const data = executeResult?.data;
+
+      if (Array.isArray(data)) {
+        allData.push(...data);
+      }
+    }
+
+    const hasValidData =
+      Array.isArray(allData) &&
+      allData.some((x) => x && x.payload);
+
+    console.log("HAS VALID DATA:", hasValidData);
+
+    addNote(trace, "execute_result", {
+      hasData: hasValidData,
+      count: allData.length,
+    });
+
+    if (!hasValidData) {
+      console.log("EARLY EXIT: no_data");
+      addNote(trace, "early_exit", { reason: "no_data" });
+
+      return { message: NO_DATA_MESSAGE };
+    }
+
+    // =========================
+    // 5. RENDER
+    // =========================
+    const finalMessage = await render({
+      message,
+      data: allData,
+      maps,
+      tenantId: tenant_id || "default", // 🔥 FIX CRÍTICO
+    });
+
+    console.log("ENGINE SUCCESS");
+
+    return {
+      message: finalMessage || NO_DATA_MESSAGE,
+    };
 
   } catch (e) {
-    console.error("RENDER ERROR:", e?.message);
-    return NO_DATA_MESSAGE;
+    console.error("ENGINE ERROR:", e);
+
+    addNote(trace, "engine_error", {
+      message: e?.message,
+    });
+
+    return {
+      message: "Error interno del sistema",
+    };
   }
 }
