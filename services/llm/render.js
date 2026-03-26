@@ -2,18 +2,42 @@
 
 import { callLLM } from "./callLLM.js";
 import { getPrompt } from "./promptSelector.js";
+import { getBehaviorBlock } from "./behaviorService.js";
 
 // =========================
 // MAIN RENDER
 // =========================
 
-export async function render({ message, data, maps = [] }) {
+export async function render({
+  message,
+  data,
+  maps = [],
+  tenantId = "default",
+}) {
   // fallback duro
   if (!data || !Array.isArray(data) || data.length === 0) {
     return "No hay información disponible";
   }
 
+  // =========================
+  // PROMPT
+  // =========================
+
   const { prompt, type } = getPrompt(maps);
+
+  // =========================
+  // BEHAVIOR
+  // =========================
+
+  const behaviorBlock = await getBehaviorBlock(tenantId);
+
+  const systemPrompt = [behaviorBlock, prompt]
+    .filter(Boolean)
+    .join("\n");
+
+  // =========================
+  // LOG INPUT
+  // =========================
 
   console.log("RENDER INPUT:", {
     message_length: message?.length || 0,
@@ -23,11 +47,10 @@ export async function render({ message, data, maps = [] }) {
   });
 
   try {
-    // limitar payload
     const safeData = JSON.stringify(data).slice(0, 12000);
 
     const res = await callLLM([
-      { role: "system", content: prompt },
+      { role: "system", content: systemPrompt },
       {
         role: "user",
         content: `
@@ -44,7 +67,6 @@ ${safeData}
 
     console.log("RENDER OUTPUT LENGTH:", output?.length);
 
-    // fallback output
     if (typeof output !== "string" || !output.trim()) {
       return "No hay información disponible";
     }
