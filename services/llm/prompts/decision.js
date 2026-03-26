@@ -20,6 +20,7 @@ REGLAS:
 
 - No es necesario cubrir todos los modelos ni toda la información
 - Prioriza lo más relevante para decidir rápidamente
+- Si una opción destaca claramente, priorízala y reduce el resto a contraste breve
 
 CONTENIDO:
 
