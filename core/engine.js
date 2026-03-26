@@ -109,7 +109,7 @@ export async function runEngine({
     // =========================
     let models = [];
 
-    const requiresModels = ["cliente", "comercial", "ficha", "mitos"].includes(topic);
+    const requiresModels = VALID_TOPICS.includes(topic);
 
     console.log("REQUIRES MODELS:", requiresModels);
 
@@ -191,6 +191,7 @@ export async function runEngine({
     const finalMessage = await render({
       message,
       data,
+      maps, // ✅ FIX CRÍTICO
     });
 
     console.log("RENDER RESULT LENGTH:", finalMessage?.length);
