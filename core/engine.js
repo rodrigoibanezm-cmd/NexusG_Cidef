@@ -65,12 +65,17 @@ export async function runEngine({
 
     addNote(trace, "maps_detected", { maps });
 
+    // 🔴 REGLA CLAVE: SIN MAPS → NO EXECUTE
     if (maps.length === 0) {
       console.log("EARLY EXIT: no_maps");
       addNote(trace, "early_exit", { reason: "no_maps" });
-      return { message: "No hay información disponible" };
+
+      return {
+        message: "No hay información disponible",
+      };
     }
 
+    // 🔥 DESDE AQUÍ → EXECUTE ES OBLIGATORIO
     const topic = maps[0];
 
     console.log("TOPIC SELECTED:", topic);
@@ -144,7 +149,7 @@ export async function runEngine({
     }
 
     // =========================
-    // 4. execute
+    // 4. execute (OBLIGATORIO)
     // =========================
     console.log("CALL executePayload:", {
       topic,
@@ -180,18 +185,21 @@ export async function runEngine({
     if (!hasValidData) {
       console.log("EARLY EXIT: no_data");
       addNote(trace, "early_exit", { reason: "no_data" });
-      return { message: "No hay información disponible" };
+
+      return {
+        message: "No hay información disponible",
+      };
     }
 
     // =========================
-    // 5. render
+    // 5. render (SOLO execute)
     // =========================
     console.log("CALL RENDER");
 
     const finalMessage = await render({
       message,
       data,
-      maps, // ✅ FIX CRÍTICO
+      maps,
     });
 
     console.log("RENDER RESULT LENGTH:", finalMessage?.length);
