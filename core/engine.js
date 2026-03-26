@@ -8,21 +8,30 @@ import { selectModels } from "../services/selector/selectModels.js";
 import { addNote } from "./trace.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
+const NO_DATA_MESSAGE = "No hay información disponible.";
 
 // =========================
-// PARSE JSON ROBUSTO
+// PARSE JSON ROBUSTO (simple)
 // =========================
 function safeParseJSON(raw) {
   if (!raw) return null;
 
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-
   try {
-    return JSON.parse(match[0]);
-  } catch {
-    return null;
+    return JSON.parse(raw);
+  } catch {}
+
+  // intento 2: buscar bloque json simple (no greedy global)
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+
+  if (start !== -1 && end !== -1 && end > start) {
+    const slice = raw.slice(start, end + 1);
+    try {
+      return JSON.parse(slice);
+    } catch {}
   }
+
+  return null;
 }
 
 // =========================
@@ -42,7 +51,7 @@ export async function runEngine({
     console.log("ENGINE START:", { message });
 
     // =========================
-    // 1. LLM → decide (maps)
+    // 1. DECIDE
     // =========================
     const decideRaw = await callLLM([
       { role: "system", content: systemPrompt },
@@ -53,42 +62,29 @@ export async function runEngine({
 
     const decision = safeParseJSON(decideRaw?.content);
 
-    console.log("DECISION PARSED:", decision);
-
     if (!decision || !Array.isArray(decision.maps)) {
-      throw new Error("Invalid LLM JSON (decide)");
+      throw new Error("INVALID_DECIDE_JSON");
     }
 
-    const maps = decision.maps;
+    // limpiar maps
+    const maps = [...new Set(
+      decision.maps.filter((x) => VALID_TOPICS.includes(x))
+    )];
 
     console.log("MAPS DETECTED:", maps);
-
     addNote(trace, "maps_detected", { maps });
 
-    // 🔴 REGLA CLAVE: SIN MAPS → NO EXECUTE
+    // sin dominio → salir
     if (maps.length === 0) {
       console.log("EARLY EXIT: no_maps");
       addNote(trace, "early_exit", { reason: "no_maps" });
 
-      return {
-        message: "No hay información disponible",
-      };
-    }
-
-    // 🔥 DESDE AQUÍ → EXECUTE ES OBLIGATORIO
-    const topic = maps[0];
-
-    console.log("TOPIC SELECTED:", topic);
-
-    if (!VALID_TOPICS.includes(topic)) {
-      throw new Error("Invalid topic");
+      return { message: NO_DATA_MESSAGE };
     }
 
     // =========================
-    // 2. decideMaps (backend)
+    // 2. DECIDE MAPS (backend)
     // =========================
-    console.log("CALL decideMaps:", { maps });
-
     const decideResult = await runTool({
       name: "decideMaps",
       args: {
@@ -99,8 +95,6 @@ export async function runEngine({
       tenant_id,
     });
 
-    console.log("DECIDE RESULT:", decideResult);
-
     const mapsData = decideResult?.maps || {};
 
     console.log("MAPS DATA KEYS:", Object.keys(mapsData));
@@ -110,122 +104,95 @@ export async function runEngine({
     });
 
     // =========================
-    // 3. SELECT MODELS
+    // 3. SELECT MODELS (una vez)
     // =========================
     let models = [];
 
-    const requiresModels = VALID_TOPICS.includes(topic);
+    try {
+      models = await selectModels({
+        message,
+        maps: mapsData,
+      });
+    } catch (e) {
+      console.log("SELECTOR ERROR:", e?.message);
+      models = [];
+    }
 
-    console.log("REQUIRES MODELS:", requiresModels);
+    console.log("MODELS SELECTED:", models);
 
-    if (requiresModels) {
-      try {
-        models = await selectModels({
-          message,
-          maps: mapsData,
-        });
+    addNote(trace, "models_selected", {
+      count: models.length,
+      models: models.slice(0, 3),
+    });
 
-        console.log("MODELS SELECTED:", models);
+    // =========================
+    // 4. EXECUTE MULTI-TOPIC
+    // =========================
+    let allData = [];
 
-        addNote(trace, "models_selected", {
-          count: models.length,
-          models: models.slice(0, 3),
-        });
+    for (const topic of maps) {
+      console.log("EXECUTE TOPIC:", topic);
 
-      } catch (e) {
-        console.log("SELECTOR ERROR:", e?.message);
+      const executeResult = await runTool({
+        name: "executePayload",
+        args: {
+          topic,
+          models,
+          trace_id: trace?.trace_id,
+        },
+        baseUrl,
+        tenant_id,
+      });
 
-        addNote(trace, "selector_error", {
-          message: e.message,
-        });
+      const data = executeResult?.data;
 
-        models = [];
-      }
-
-      if (!models.length) {
-        console.log("MODELS EMPTY");
-        addNote(trace, "models_empty", {});
+      if (Array.isArray(data)) {
+        allData.push(...data);
       }
     }
 
-    // =========================
-    // 4. execute (OBLIGATORIO)
-    // =========================
-    console.log("CALL executePayload:", {
-      topic,
-      models,
-    });
-
-    const executeResult = await runTool({
-      name: "executePayload",
-      args: {
-        topic,
-        models,
-        trace_id: trace?.trace_id,
-      },
-      baseUrl,
-      tenant_id,
-    });
-
-    console.log("EXECUTE RESULT:", executeResult);
-
-    const data = executeResult?.data;
-
     const hasValidData =
-      Array.isArray(data) &&
-      data.some((x) => x && x.payload);
+      Array.isArray(allData) &&
+      allData.some((x) => x && x.payload);
 
     console.log("HAS VALID DATA:", hasValidData);
 
     addNote(trace, "execute_result", {
       hasData: hasValidData,
-      count: Array.isArray(data) ? data.length : 0,
+      count: allData.length,
     });
 
     if (!hasValidData) {
       console.log("EARLY EXIT: no_data");
       addNote(trace, "early_exit", { reason: "no_data" });
 
-      return {
-        message: "No hay información disponible",
-      };
+      return { message: NO_DATA_MESSAGE };
     }
 
     // =========================
-    // 5. render (SOLO execute)
+    // 5. RENDER (solo execute)
     // =========================
-    console.log("CALL RENDER");
-
     const finalMessage = await render({
       message,
-      data,
-      maps,
-    });
-
-    console.log("RENDER RESULT LENGTH:", finalMessage?.length);
-    console.log("RENDER PREVIEW:", finalMessage?.slice(0, 200));
-
-    addNote(trace, "render_complete", {
-      hasMessage: !!finalMessage,
-      length: finalMessage?.length || 0,
+      data: allData,
+      maps, // se pasa pero NO se usa (disciplina)
     });
 
     console.log("ENGINE SUCCESS");
 
     return {
-      message: finalMessage || "No hay información disponible",
+      message: finalMessage || NO_DATA_MESSAGE,
     };
 
   } catch (e) {
-    console.error("ENGINE ERROR:", e?.message, e?.stack);
+    console.error("ENGINE ERROR:", e);
 
     addNote(trace, "engine_error", {
       message: e?.message,
-      stack: e?.stack,
     });
 
     return {
-      message: e?.message || "Error interno del sistema",
+      message: "Error interno del sistema",
     };
   }
 }
