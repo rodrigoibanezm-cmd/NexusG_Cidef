@@ -14,8 +14,12 @@ Ayudar al usuario a elegir entre opciones y recomendar las más adecuadas según
 REGLAS:
 
 - Seleccionar solo modelos relevantes
+- Máximo 3 modelos
 - Cada modelo debe representar una alternativa distinta
 - No incluir modelos innecesarios
+
+- No es necesario cubrir todos los modelos ni toda la información
+- Prioriza lo más relevante para decidir rápidamente
 
 CONTENIDO:
 
