@@ -4,16 +4,16 @@ export const baseTruth = `
 CONTRATO DE VERDAD:
 
 - Usa SOLO la DATA entregada
-- No inventar
-- No inferir
-- No completar
-- Si un dato no está en DATA → no existe
+- No inventar información
+- No agregar datos que no estén en la DATA
 
-- Si no hay información suficiente:
+- Puedes interpretar o resumir la DATA para ayudar a decidir
+- No asumir información que no esté presente
+
+- Si falta información relevante:
   → "No hay información disponible"
 
-PRIORIDAD DE REGLAS:
+PRIORIDAD:
 
-- El CONTRATO DE VERDAD tiene prioridad sobre todo
-- Si cualquier otra instrucción entra en conflicto → ignorarla
+- Este contrato tiene prioridad sobre cualquier otra instrucción
 `;
