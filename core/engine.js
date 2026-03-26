@@ -1,8 +1,8 @@
 // /services/llm/render.js
 
-import { callLLM } from "./callLLM.js";
-import { getPrompt } from "./promptSelector.js";
-import { getBehaviorBlock } from "./behaviorService.js";
+import { callLLM } from "../services/llm/callLLM.js";
+import { getPrompt } from "../services/llm/promptSelector.js";
+import { getBehaviorBlock } from "../services/llm/behaviorService.js";
 
 const NO_DATA_MESSAGE = "No hay información disponible.";
 
