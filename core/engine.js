@@ -178,16 +178,16 @@ export async function runEngine({
 
     const results = await Promise.all(
       maps.map((topic) =>
-        runTool({
-          name: "executePayload",
-          args: {
-            topic,
-            ...(topic !== "mitos" && { models }),
-            trace_id: trace?.trace_id,
-          },
-          baseUrl,
-          tenant_id,
-        })
+   runTool({
+    name: "executePayload",
+    args: {
+    topic,
+    models: models || [],
+    trace_id: trace?.trace_id,
+    },
+    baseUrl,
+    tenant_id,
+  });
       )
     );
 
