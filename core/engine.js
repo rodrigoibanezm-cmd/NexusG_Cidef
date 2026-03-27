@@ -65,23 +65,23 @@ function selectMito(message, mitos = []) {
   let scoped = mitos;
 
   if (text.includes("china")) {
-    scoped = scoped.filter((m) => m.scope?.includes("china"));
+    scoped = scoped.filter(m => m.scope?.includes("china"));
   }
 
   if (text.includes("eléctrico") || text.includes("ev")) {
-    scoped = scoped.filter((m) => m.scope?.includes("ev"));
+    scoped = scoped.filter(m => m.scope?.includes("ev"));
   }
 
   if (text.includes("repuesto")) {
-    return scoped.find((m) => m.id.includes("repuesto")) || null;
+    return scoped.find(m => m.id.includes("repuesto")) || null;
   }
 
   if (text.includes("falla") || text.includes("calidad")) {
-    return scoped.find((m) => m.id.includes("calidad")) || null;
+    return scoped.find(m => m.id.includes("calidad")) || null;
   }
 
   if (text.includes("bater")) {
-    return scoped.find((m) => m.id.includes("bateria")) || null;
+    return scoped.find(m => m.id.includes("bateria")) || null;
   }
 
   return scoped.length > 0 ? scoped[0] : null;
@@ -119,15 +119,15 @@ export async function runEngine({
       throw new Error("INVALID_DECIDE_JSON");
     }
 
-    const maps = [
-      ...new Set(decision.maps.filter((x) => VALID_TOPICS.includes(x))),
-    ];
+    const maps = [...new Set(
+      decision.maps.filter((x) => VALID_TOPICS.includes(x))
+    )];
 
     console.log("MAPS DETECTED:", maps);
 
     const intent = {
       requires_tech: true,
-      ...(decision.intent || {}),
+      ...(decision.intent || {})
     };
 
     addNote(trace, "maps_detected", { maps });
@@ -248,13 +248,19 @@ export async function runEngine({
     }
 
     // =========================
-    // 5. PREPARE
+    // 5. PREPARE (🔥 FIX CLAVE)
     // =========================
-    let preparedData = prepareData(allData, maps, intent);
+    let preparedData;
+
+    if (isMitosOnly) {
+      preparedData = allData; // 🔥 NO pasar por prepareData
+    } else {
+      preparedData = prepareData(allData, maps, intent);
+    }
 
     console.log("RENDER INPUT:", {
       maps,
-      data_count: preparedData.length,
+      data_count: preparedData.length
     });
 
     // =========================
@@ -283,6 +289,7 @@ export async function runEngine({
     return {
       message: finalMessage || NO_DATA_MESSAGE,
     };
+
   } catch (e) {
     console.error("ENGINE ERROR:", e);
 
