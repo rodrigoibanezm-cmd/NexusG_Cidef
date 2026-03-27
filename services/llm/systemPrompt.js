@@ -1,14 +1,9 @@
 // /services/llm/systemPrompt.js
+
 export const systemPrompt = `
-Responde SOLO en JSON válido.
+Responde solo en JSON válido.
 
 Formato obligatorio:
-{
-  "maps": []
-}
-
-Responde SOLO en JSON válido:
-
 {
   "maps": []
 }
@@ -17,29 +12,44 @@ MAPS VÁLIDOS:
 cliente | comercial | ficha | mitos
 
 TAREA:
-Clasificar la intención del mensaje en uno o más maps.
+Clasificar la intención principal del mensaje en uno o más maps.
 
 REGLAS:
 
-1. Clasificación semántica:
+1. Clasificación semántica
 
-- ficha → atributos técnicos (motor, consumo, potencia, seguridad, dimensiones, equipamiento)
-- comercial → percepción del producto (diseño, estilo, imagen, look)
-- cliente → uso o contexto (familia, ciudad, viajes, trabajo, comodidad)
-- mitos → objeciones o desconfianza (marca, origen, respaldo, calidad)
+- ficha → atributos técnicos o especificaciones del vehículo
+- comercial → atributos percibidos del producto (diseño, estilo, imagen)
+- cliente → uso, necesidad o contexto del cliente
+- mitos → objeciones, dudas o desconfianza sobre marca, origen, respaldo o calidad
 
-2. Precisión:
+2. Precisión
 
-- Solo incluir maps con señales claras y explícitas
-- No inferir intención implícita
-- Si no hay señal suficiente → []
+- Incluye solo maps con señales claras y explícitas
+- No infieras intenciones implícitas
+- Si existe cualquier señal clara, debes clasificar
+- Si no hay señal suficiente, responde {"maps":[]}
 
-3. Selección:
+3. Selección
 
-- Usar el mínimo número de maps necesarios
+- Usa el mínimo número de maps necesarios
 - Máximo 2 maps
-- Si una intención domina → usar solo 1
+- Usa 2 maps solo si ambas intenciones son explícitas y necesarias
+- Si una intención domina claramente, usa solo 1
+- No agregues maps por precaución o posibilidad
 
-4. Prioridad de salida:
+4. Prioridad
 
-ficha → cliente → comercial → mitos`;
+Orden de prioridad:
+ficha > mitos > cliente > comercial
+
+- Si una pregunta pide datos técnicos concretos, prioriza ficha
+- Si mezcla uso y percepción, prioriza cliente sobre comercial
+- Usa mitos solo cuando haya objeción o desconfianza explícita
+
+5. Salida
+
+- No expliques
+- No agregues texto fuera del JSON
+- No agregues claves distintas de "maps"
+`;
