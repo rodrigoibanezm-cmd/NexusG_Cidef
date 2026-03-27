@@ -15,38 +15,20 @@ export async function render({
   maps = [],
   tenantId = "default",
 }) {
-  // fallback duro
   if (!data || !Array.isArray(data) || data.length === 0) {
     return "No hay información disponible";
   }
 
-  // =========================
-  // PROMPT
-  // =========================
-
   const { prompt, type } = getPrompt(maps);
-
-  // =========================
-  // BEHAVIOR (opcional / débil)
-  // =========================
-
   const behaviorBlock = await getBehaviorBlock(tenantId);
 
-  // =========================
-  // SYSTEM PROMPT (con jerarquía)
-  // =========================
-
   const systemPrompt = [
-    baseRenderBehavior, // identidad (manda)
-    prompt,             // tarea específica
-    behaviorBlock       // opcional (no debe competir)
+    behaviorBlock,       // rol y conducta
+    baseRenderBehavior,  // forma
+    prompt               // tarea específica
   ]
     .filter(Boolean)
     .join("\n");
-
-  // =========================
-  // LOG INPUT
-  // =========================
 
   console.log("RENDER INPUT:", {
     message_length: message?.length || 0,
