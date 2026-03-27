@@ -29,57 +29,54 @@ function isComparison(message) {
 // NORMALIZADOR
 // =========================
 function normalize(s) {
-  return (s || "").toLowerCase().replace(/\s+/g, "");
+  return (s || "")
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
 }
 
 // =========================
-// SELECT MODELS V3
+// SELECT MODELS
 // =========================
 export async function selectModels({ message, maps }) {
   const mapKeys = Object.keys(maps || {});
 
-  // 🔴 mitos → no selector (por ahora)
   if (mapKeys.includes("mitos")) {
     return [];
   }
 
-  // =========================
-  // UNIVERSO BACKEND
-  // =========================
-  const modelIds = Object.values(maps)
-    .flat()
-    .map((m) => m?.model_id)
-    .filter(Boolean);
+  const modelIds = [...new Set(
+    Object.values(maps)
+      .flat()
+      .map((m) => m?.model_id)
+      .filter(Boolean)
+  )];
 
   if (!modelIds.length) return [];
 
-  // =========================
-  // LLM PROPONE
-  // =========================
   const prompt = `
-Eres un selector de modelos.
+Responde solo en JSON válido.
 
-=========================
-REGLAS
-=========================
-
-- Usa SOLO los modelos disponibles
-- NO inventar modelos
-- Elegir máximo 3 modelos
-- Elegir los MÁS relevantes
-
-- IMPORTANTE:
-  - Si es comparación → elegir al menos 2 modelos
-  - Si es recomendación → elegir al menos 1 modelo
-  - NO devolver vacío si hay contexto suficiente
-
-=========================
-FORMATO
-=========================
-
+Formato obligatorio:
 {
   "models": []
 }
+
+REGLAS:
+
+- Usa solo los modelos disponibles
+- No inventes modelos
+- Elige máximo 2 modelos
+- Elige los más relevantes para responder el mensaje
+
+- Si es comparación, elige 2 modelos cuando exista contexto suficiente
+- Si es recomendación, elige 1 modelo cuando exista una mejor opción clara
+- No devuelvas vacío si hay contexto suficiente
+
+SALIDA:
+
+- No expliques
+- No agregues texto fuera del JSON
+- No agregues claves distintas de "models"
 `;
 
   try {
@@ -103,25 +100,14 @@ ${JSON.stringify(modelIds)}
 
     const candidates = parsed.models;
 
-    // =========================
-    // VALIDACIÓN BACKEND
-    // =========================
     let valid = candidates.filter((c) =>
       modelIds.some((m) => normalize(m) === normalize(c))
     );
 
-    // =========================
-    // FALLBACK CONTROLADO
-    // =========================
-    if (valid.length === 0) {
-      if (modelIds.length === 1) {
-        valid = [modelIds[0]];
-      }
+    if (valid.length === 0 && modelIds.length === 1) {
+      valid = [modelIds[0]];
     }
 
-    // =========================
-    // REGLAS DE NEGOCIO
-    // =========================
     if (isComparison(message) && valid.length < 2) {
       valid = modelIds.slice(0, 2);
     }
@@ -130,7 +116,7 @@ ${JSON.stringify(modelIds)}
       valid = modelIds.slice(0, 1);
     }
 
-    const finalModels = valid.slice(0, 3);
+    const finalModels = valid.slice(0, 2);
 
     console.log("MODEL SELECTION:", {
       message,
