@@ -4,6 +4,7 @@ import { callLLM } from "../services/llm/callLLM.js";
 import { runTool } from "../services/tools.js";
 import { render } from "../services/llm/render.js";
 import { selectModels } from "../services/selector/selectModels.js";
+import { prepareData } from "../services/llm/prepareData.js"; // 🔥 NEW
 
 import { addNote } from "./trace.js";
 
@@ -167,13 +168,18 @@ export async function runEngine({
     }
 
     // =========================
-    // 5. RENDER
+    // 5. PREPARE (🔥 FIX REAL)
+    // =========================
+    const preparedData = prepareData(allData, maps, decision?.intent || {});
+
+    // =========================
+    // 6. RENDER
     // =========================
     const finalMessage = await render({
       message,
-      data: allData,
+      data: preparedData, // 🔥 CAMBIO CLAVE
       maps,
-      tenantId: tenant_id || "default", // 🔥 FIX CRÍTICO
+      tenantId: tenant_id || "default",
     });
 
     console.log("ENGINE SUCCESS");
