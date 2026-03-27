@@ -10,9 +10,10 @@ import { addNote } from "./trace.js";
 
 const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 const NO_DATA_MESSAGE = "No hay información disponible.";
+const MAX_MODELS = 2;
 
 // =========================
-// PARSE JSON ROBUSTO (simple)
+// PARSE JSON ROBUSTO
 // =========================
 function safeParseJSON(raw) {
   if (!raw) return null;
@@ -25,13 +26,21 @@ function safeParseJSON(raw) {
   const end = raw.lastIndexOf("}");
 
   if (start !== -1 && end !== -1 && end > start) {
-    const slice = raw.slice(start, end + 1);
     try {
-      return JSON.parse(slice);
+      return JSON.parse(raw.slice(start, end + 1));
     } catch {}
   }
 
   return null;
+}
+
+// =========================
+// EXTRAER PAYLOAD LIMPIO
+// =========================
+function extractPayload(data = []) {
+  return data
+    .map((x) => x?.payload)
+    .filter((x) => x && x.modelo);
 }
 
 // =========================
@@ -58,8 +67,6 @@ export async function runEngine({
       { role: "user", content: message },
     ]);
 
-    console.log("DECIDE RAW:", decideRaw?.content);
-
     const decision = safeParseJSON(decideRaw?.content);
 
     if (!decision || !Array.isArray(decision.maps)) {
@@ -70,15 +77,14 @@ export async function runEngine({
       decision.maps.filter((x) => VALID_TOPICS.includes(x))
     )];
 
-    const intent = decision?.intent || {};
+    const intent = {
+      requires_tech: true,
+      ...(decision.intent || {})
+    };
 
-    console.log("MAPS DETECTED:", maps);
     addNote(trace, "maps_detected", { maps });
 
     if (maps.length === 0) {
-      console.log("EARLY EXIT: no_maps");
-      addNote(trace, "early_exit", { reason: "no_maps" });
-
       return { message: NO_DATA_MESSAGE };
     }
 
@@ -97,12 +103,6 @@ export async function runEngine({
 
     const mapsData = decideResult?.maps || {};
 
-    console.log("MAPS DATA KEYS:", Object.keys(mapsData));
-
-    addNote(trace, "maps_resolved", {
-      keys: Object.keys(mapsData),
-    });
-
     // =========================
     // 3. SELECT MODELS
     // =========================
@@ -113,54 +113,49 @@ export async function runEngine({
         message,
         maps: mapsData,
       });
-    } catch (e) {
-      console.log("SELECTOR ERROR:", e?.message);
+    } catch {
       models = [];
     }
 
-    console.log("MODELS SELECTED:", models);
+    models = models.slice(0, MAX_MODELS);
+
+    // 🔒 EARLY EXIT MODELOS
+    if (models.length === 0) {
+      return { message: NO_DATA_MESSAGE };
+    }
 
     addNote(trace, "models_selected", {
       count: models.length,
-      models: models.slice(0, 3),
+      models,
     });
 
     // =========================
-    // 4. EXECUTE MULTI-TOPIC
+    // 4. EXECUTE (PARALLEL)
     // =========================
+    const results = await Promise.all(
+      maps.map((topic) =>
+        runTool({
+          name: "executePayload",
+          args: {
+            topic,
+            models,
+            trace_id: trace?.trace_id,
+          },
+          baseUrl,
+          tenant_id,
+        })
+      )
+    );
+
     let allData = [];
 
-    for (const topic of maps) {
-      console.log("EXECUTE TOPIC:", topic);
-
-      const executeResult = await runTool({
-        name: "executePayload",
-        args: {
-          topic,
-          models,
-          trace_id: trace?.trace_id,
-        },
-        baseUrl,
-        tenant_id,
-      });
-
-      const data = executeResult?.data;
-
-      if (Array.isArray(data)) {
-        // 🔥 FIX: extraer payload
-        const clean = data
-          .map((x) => x?.payload)
-          .filter(Boolean);
-
-        allData.push(...clean);
+    for (const r of results) {
+      if (Array.isArray(r?.data)) {
+        allData.push(...extractPayload(r.data));
       }
     }
 
-    const hasValidData =
-      Array.isArray(allData) &&
-      allData.length > 0;
-
-    console.log("HAS VALID DATA:", hasValidData);
+    const hasValidData = allData.length > 0;
 
     addNote(trace, "execute_result", {
       hasData: hasValidData,
@@ -168,23 +163,29 @@ export async function runEngine({
     });
 
     if (!hasValidData) {
-      console.log("EARLY EXIT: no_data");
-      addNote(trace, "early_exit", { reason: "no_data" });
-
       return { message: NO_DATA_MESSAGE };
     }
 
     // =========================
     // 5. PREPARE
     // =========================
-    const preparedData = prepareData(
-      allData,
-      maps,
-      intent
-    );
+    let preparedData = prepareData(allData, maps, intent);
 
     // =========================
-    // 6. RENDER
+    // 6. GUARDRAIL PAYLOAD
+    // =========================
+    const payloadSize = Buffer.byteLength(JSON.stringify(preparedData));
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("PAYLOAD SIZE:", payloadSize);
+    }
+
+    if (payloadSize > 8000) {
+      preparedData = preparedData.slice(0, 1);
+    }
+
+    // =========================
+    // 7. RENDER
     // =========================
     const finalMessage = await render({
       message,
@@ -192,8 +193,6 @@ export async function runEngine({
       maps,
       tenantId: tenant_id || "default",
     });
-
-    console.log("ENGINE SUCCESS");
 
     return {
       message: finalMessage || NO_DATA_MESSAGE,
