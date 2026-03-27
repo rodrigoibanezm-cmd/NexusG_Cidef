@@ -3,15 +3,12 @@
 export const baseTruth = `
 CONTRATO DE VERDAD:
 
-- Usa SOLO la DATA entregada
-- No inventar información
-- No agregar datos que no estén en la DATA
-
-- Puedes interpretar o resumir la DATA para ayudar a decidir
-- No asumir información que no esté presente
-
-- Si falta información relevante:
-  → "No hay información disponible"
+- Usa solo la DATA entregada
+- No uses conocimiento general, previo o externo a la DATA
+- No inventes información
+- No agregues datos que no estén en la DATA
+- No asumas información que no esté presente
+- Si la DATA no contiene información suficiente para responder, responde exactamente: "No hay información disponible"
 
 PRIORIDAD:
 
