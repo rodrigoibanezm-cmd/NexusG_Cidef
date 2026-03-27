@@ -12,6 +12,8 @@ const VALID_TOPICS = ["cliente", "comercial", "ficha", "mitos"];
 const NO_DATA_MESSAGE = "No hay información disponible.";
 const MAX_MODELS = 2;
 
+const isDev = process.env.NODE_ENV !== "production";
+
 // =========================
 // PARSE JSON ROBUSTO
 // =========================
@@ -44,14 +46,13 @@ function extractPayload(data = []) {
 }
 
 // =========================
-// SELECT MITO (determinista)
+// SELECT MITO
 // =========================
 function selectMito(message, mitos = []) {
   const text = message.toLowerCase();
 
   let scoped = mitos;
 
-  // scope
   if (text.includes("china")) {
     scoped = scoped.filter(m => m.scope?.includes("china"));
   }
@@ -60,7 +61,6 @@ function selectMito(message, mitos = []) {
     scoped = scoped.filter(m => m.scope?.includes("ev"));
   }
 
-  // keywords
   if (text.includes("repuesto")) {
     return scoped.find(m => m.id.includes("repuesto")) || null;
   }
@@ -73,7 +73,6 @@ function selectMito(message, mitos = []) {
     return scoped.find(m => m.id.includes("bateria")) || null;
   }
 
-  // fallback controlado
   return scoped.length > 0 ? scoped[0] : null;
 }
 
@@ -91,7 +90,7 @@ export async function runEngine({
   const baseUrl = `${protocol}://${req.headers.host}`;
 
   try {
-    console.log("ENGINE START:", { message });
+    if (isDev) console.log("ENGINE START:", { message });
 
     // =========================
     // 1. DECIDE
@@ -100,6 +99,8 @@ export async function runEngine({
       { role: "system", content: systemPrompt },
       { role: "user", content: message },
     ]);
+
+    if (isDev) console.log("DECIDE RAW:", decideRaw?.content);
 
     const decision = safeParseJSON(decideRaw?.content);
 
@@ -111,6 +112,8 @@ export async function runEngine({
       decision.maps.filter((x) => VALID_TOPICS.includes(x))
     )];
 
+    if (isDev) console.log("MAPS DETECTED:", maps);
+
     const intent = {
       requires_tech: true,
       ...(decision.intent || {})
@@ -119,6 +122,7 @@ export async function runEngine({
     addNote(trace, "maps_detected", { maps });
 
     if (maps.length === 0) {
+      if (isDev) console.log("EARLY EXIT: no_maps");
       return { message: NO_DATA_MESSAGE };
     }
 
@@ -136,6 +140,8 @@ export async function runEngine({
     });
 
     const mapsData = decideResult?.maps || {};
+
+    if (isDev) console.log("MAPS DATA KEYS:", Object.keys(mapsData));
 
     // =========================
     // 3. SELECT MODELS
@@ -156,8 +162,11 @@ export async function runEngine({
     const isMitosOnly = maps.length === 1 && maps[0] === "mitos";
 
     if (models.length === 0 && !isMitosOnly) {
+      if (isDev) console.log("EARLY EXIT: no_models");
       return { message: NO_DATA_MESSAGE };
     }
+
+    if (isDev) console.log("MODELS SELECTED:", models);
 
     addNote(trace, "models_selected", {
       count: models.length,
@@ -165,8 +174,10 @@ export async function runEngine({
     });
 
     // =========================
-    // 4. EXECUTE (PARALLEL)
+    // 4. EXECUTE
     // =========================
+    if (isDev) console.log("EXECUTE TOPICS:", maps);
+
     const results = await Promise.all(
       maps.map((topic) =>
         runTool({
@@ -190,6 +201,8 @@ export async function runEngine({
       }
     }
 
+    if (isDev) console.log("EXECUTE DATA COUNT:", allData.length);
+
     const hasValidData = allData.length > 0;
 
     addNote(trace, "execute_result", {
@@ -198,14 +211,17 @@ export async function runEngine({
     });
 
     if (!hasValidData) {
+      if (isDev) console.log("EARLY EXIT: no_data");
       return { message: NO_DATA_MESSAGE };
     }
 
     // =========================
-    // 🔥 MITOS SELECTION
+    // MITOS SELECTION
     // =========================
     if (maps.includes("mitos")) {
       const mito = selectMito(message, allData);
+
+      if (isDev) console.log("MITO SELECTED:", mito?.id);
 
       if (!mito) {
         return { message: NO_DATA_MESSAGE };
@@ -219,14 +235,19 @@ export async function runEngine({
     // =========================
     let preparedData = prepareData(allData, maps, intent);
 
+    if (isDev) {
+      console.log("RENDER INPUT:", {
+        maps,
+        data_count: preparedData.length
+      });
+    }
+
     // =========================
-    // 6. GUARDRAIL PAYLOAD
+    // 6. GUARDRAIL
     // =========================
     const payloadSize = Buffer.byteLength(JSON.stringify(preparedData));
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log("PAYLOAD SIZE:", payloadSize);
-    }
+    if (isDev) console.log("PAYLOAD SIZE:", payloadSize);
 
     if (payloadSize > 8000) {
       preparedData = preparedData.slice(0, 1);
@@ -241,6 +262,8 @@ export async function runEngine({
       maps,
       tenantId: tenant_id || "default",
     });
+
+    if (isDev) console.log("ENGINE SUCCESS");
 
     return {
       message: finalMessage || NO_DATA_MESSAGE,
