@@ -40,7 +40,7 @@ function safeParseJSON(raw) {
 function extractPayload(data = []) {
   return data
     .map((x) => x?.payload)
-    .filter((x) => x && x.id);
+    .filter((x) => x && (x.id || x.modelo));
 }
 
 // =========================
@@ -52,23 +52,23 @@ function selectMito(message, mitos = []) {
   let scoped = mitos;
 
   if (text.includes("china")) {
-    scoped = scoped.filter(m => m.scope?.includes("china"));
+    scoped = scoped.filter((m) => m.scope?.includes("china"));
   }
 
   if (text.includes("eléctrico") || text.includes("ev")) {
-    scoped = scoped.filter(m => m.scope?.includes("ev"));
+    scoped = scoped.filter((m) => m.scope?.includes("ev"));
   }
 
   if (text.includes("repuesto")) {
-    return scoped.find(m => m.id.includes("repuesto")) || null;
+    return scoped.find((m) => m.id.includes("repuesto")) || null;
   }
 
   if (text.includes("falla") || text.includes("calidad")) {
-    return scoped.find(m => m.id.includes("calidad")) || null;
+    return scoped.find((m) => m.id.includes("calidad")) || null;
   }
 
   if (text.includes("bater")) {
-    return scoped.find(m => m.id.includes("bateria")) || null;
+    return scoped.find((m) => m.id.includes("bateria")) || null;
   }
 
   return scoped.length > 0 ? scoped[0] : null;
@@ -106,15 +106,15 @@ export async function runEngine({
       throw new Error("INVALID_DECIDE_JSON");
     }
 
-    const maps = [...new Set(
-      decision.maps.filter((x) => VALID_TOPICS.includes(x))
-    )];
+    const maps = [
+      ...new Set(decision.maps.filter((x) => VALID_TOPICS.includes(x))),
+    ];
 
     console.log("MAPS DETECTED:", maps);
 
     const intent = {
       requires_tech: true,
-      ...(decision.intent || {})
+      ...(decision.intent || {}),
     };
 
     addNote(trace, "maps_detected", { maps });
@@ -178,16 +178,16 @@ export async function runEngine({
 
     const results = await Promise.all(
       maps.map((topic) =>
-   runTool({
-    name: "executePayload",
-    args: {
-    topic,
-    models: models || [],
-    trace_id: trace?.trace_id,
-    },
-    baseUrl,
-    tenant_id,
-  });
+        runTool({
+          name: "executePayload",
+          args: {
+            topic,
+            models: models || [],
+            trace_id: trace?.trace_id,
+          },
+          baseUrl,
+          tenant_id,
+        })
       )
     );
 
@@ -216,7 +216,7 @@ export async function runEngine({
     // =========================
     // MITOS
     // =========================
-    if (maps.includes("mitos")) {
+    if (isMitosOnly) {
       const mito = selectMito(message, allData);
 
       console.log("MITO SELECTED:", mito?.id);
@@ -235,7 +235,7 @@ export async function runEngine({
 
     console.log("RENDER INPUT:", {
       maps,
-      data_count: preparedData.length
+      data_count: preparedData.length,
     });
 
     // =========================
@@ -264,7 +264,6 @@ export async function runEngine({
     return {
       message: finalMessage || NO_DATA_MESSAGE,
     };
-
   } catch (e) {
     console.error("ENGINE ERROR:", e);
 
