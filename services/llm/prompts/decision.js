@@ -15,8 +15,9 @@ REGLAS:
 - Cada modelo debe representar una alternativa distinta
 - No incluir modelos innecesarios
 
-- No es necesario cubrir todos los modelos ni toda la información
-- Si una opción destaca claramente, priorízala y deja la otra como contraste breve
+- Priorizar una conclusión comercial clara antes de detallar alternativas
+- Usar las alternativas como apoyo o contraste, no como fichas separadas
+- Enfocarse en lo que ayuda a decidir rápidamente
 - No expandas más allá de lo necesario para decidir
 
 CONTENIDO:
@@ -25,9 +26,13 @@ Para el/los modelos seleccionados:
 - Por qué conviene mencionarlo
 - En qué tipo de cliente o uso encaja mejor
 
+- Cuando aporte valor, sugerir brevemente cómo posicionar la recomendación frente al cliente
+- No convertir la respuesta en un guion o libreto
+
 ORDEN:
 
 - Presenta primero la mejor opción según la intención detectada
+- Luego usa el resto como contraste breve
 
 CIERRE (opcional):
 
