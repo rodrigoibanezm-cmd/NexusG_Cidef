@@ -40,7 +40,41 @@ function safeParseJSON(raw) {
 function extractPayload(data = []) {
   return data
     .map((x) => x?.payload)
-    .filter((x) => x && x.modelo);
+    .filter((x) => x && x.id);
+}
+
+// =========================
+// SELECT MITO (determinista)
+// =========================
+function selectMito(message, mitos = []) {
+  const text = message.toLowerCase();
+
+  let scoped = mitos;
+
+  // scope
+  if (text.includes("china")) {
+    scoped = scoped.filter(m => m.scope?.includes("china"));
+  }
+
+  if (text.includes("eléctrico") || text.includes("ev")) {
+    scoped = scoped.filter(m => m.scope?.includes("ev"));
+  }
+
+  // keywords
+  if (text.includes("repuesto")) {
+    return scoped.find(m => m.id.includes("repuesto")) || null;
+  }
+
+  if (text.includes("falla") || text.includes("calidad")) {
+    return scoped.find(m => m.id.includes("calidad")) || null;
+  }
+
+  if (text.includes("bater")) {
+    return scoped.find(m => m.id.includes("bateria")) || null;
+  }
+
+  // fallback controlado
+  return scoped.length > 0 ? scoped[0] : null;
 }
 
 // =========================
@@ -119,8 +153,9 @@ export async function runEngine({
 
     models = models.slice(0, MAX_MODELS);
 
-    // 🔒 EARLY EXIT MODELOS
-    if (models.length === 0) {
+    const isMitosOnly = maps.length === 1 && maps[0] === "mitos";
+
+    if (models.length === 0 && !isMitosOnly) {
       return { message: NO_DATA_MESSAGE };
     }
 
@@ -138,7 +173,7 @@ export async function runEngine({
           name: "executePayload",
           args: {
             topic,
-            models,
+            ...(topic !== "mitos" && { models }),
             trace_id: trace?.trace_id,
           },
           baseUrl,
@@ -164,6 +199,19 @@ export async function runEngine({
 
     if (!hasValidData) {
       return { message: NO_DATA_MESSAGE };
+    }
+
+    // =========================
+    // 🔥 MITOS SELECTION
+    // =========================
+    if (maps.includes("mitos")) {
+      const mito = selectMito(message, allData);
+
+      if (!mito) {
+        return { message: NO_DATA_MESSAGE };
+      }
+
+      allData = [mito];
     }
 
     // =========================
