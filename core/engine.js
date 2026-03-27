@@ -4,7 +4,7 @@ import { callLLM } from "../services/llm/callLLM.js";
 import { runTool } from "../services/tools.js";
 import { render } from "../services/llm/render.js";
 import { selectModels } from "../services/selector/selectModels.js";
-import { prepareData } from "../services/llm/prepareData.js"; // 🔥 NEW
+import { prepareData } from "../services/llm/prepareData.js";
 
 import { addNote } from "./trace.js";
 
@@ -69,6 +69,8 @@ export async function runEngine({
     const maps = [...new Set(
       decision.maps.filter((x) => VALID_TOPICS.includes(x))
     )];
+
+    const intent = decision?.intent || {};
 
     console.log("MAPS DETECTED:", maps);
     addNote(trace, "maps_detected", { maps });
@@ -145,13 +147,18 @@ export async function runEngine({
       const data = executeResult?.data;
 
       if (Array.isArray(data)) {
-        allData.push(...data);
+        // 🔥 FIX: extraer payload
+        const clean = data
+          .map((x) => x?.payload)
+          .filter(Boolean);
+
+        allData.push(...clean);
       }
     }
 
     const hasValidData =
       Array.isArray(allData) &&
-      allData.some((x) => x && x.payload);
+      allData.length > 0;
 
     console.log("HAS VALID DATA:", hasValidData);
 
@@ -168,16 +175,20 @@ export async function runEngine({
     }
 
     // =========================
-    // 5. PREPARE (🔥 FIX REAL)
+    // 5. PREPARE
     // =========================
-    const preparedData = prepareData(allData, maps, decision?.intent || {});
+    const preparedData = prepareData(
+      allData,
+      maps,
+      intent
+    );
 
     // =========================
     // 6. RENDER
     // =========================
     const finalMessage = await render({
       message,
-      data: preparedData, // 🔥 CAMBIO CLAVE
+      data: preparedData,
       maps,
       tenantId: tenant_id || "default",
     });
